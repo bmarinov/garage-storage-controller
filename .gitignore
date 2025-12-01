@@ -8,3 +8,7 @@
 !*.go
 !go.mod
 !go.sum
+
+!*.y*ml
+!Makefile
+!PROJECT
