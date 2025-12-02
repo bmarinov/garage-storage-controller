@@ -28,6 +28,7 @@ type BucketSpec struct {
 	// More info: https://book.kubebuilder.io/reference/markers/crd-validation.html
 
 	// Name is the global alias of a Bucket.
+	// +required
 	Name string `json:"name"`
 
 	// TBD: support local / user-scoped alias?
@@ -49,10 +50,19 @@ type Permissions struct {
 
 // BucketStatus defines the observed state of Bucket.
 type BucketStatus struct {
+	// +optional
+	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
+
 	// +listType=map
 	// +listMapKey=type
 	// +optional
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
+
+	// +optional
+	BucketID *string `json:"bucketId,omitempty"`
+
+	// +optional
+	LastSync *metav1.Time `json:"lastSync,omitempty"`
 }
 
 // +kubebuilder:object:root=true
@@ -60,6 +70,7 @@ type BucketStatus struct {
 
 // Bucket is the Schema for the buckets API
 type Bucket struct {
+	// +required
 	metav1.TypeMeta `json:",inline"`
 
 	// metadata is a standard object metadata
