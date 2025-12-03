@@ -5,12 +5,14 @@
 !LICENSE
 !*.sh
 !.github/workflows/*.yml
+!Dockerfile
+!.dockerignore
+
 !*.go
 !go.mod
 !go.sum
 
-!Dockerfile
-!.dockerignore
 !*.y*ml
 !Makefile
 !PROJECT
+!hack/boilerplate.go.txt
