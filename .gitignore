@@ -9,6 +9,8 @@
 !go.mod
 !go.sum
 
+!Dockerfile
+!.dockerignore
 !*.y*ml
 !Makefile
 !PROJECT
