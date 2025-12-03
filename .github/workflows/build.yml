@@ -27,5 +27,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: [test]
     steps:
+      - uses: actions/checkout@v4
+      
       - name: build image
         run: make docker-build IMG=foo:${{ github.sha }}
