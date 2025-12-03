@@ -1,0 +1,4 @@
+## Append samples of your project ##
+resources:
+- garage_v1alpha1_bucket.yaml
+# +kubebuilder:scaffold:manifestskustomizesamples

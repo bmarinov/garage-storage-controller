@@ -1,0 +1,9 @@
+apiVersion: garage.getclustered.net/v1alpha1
+kind: Bucket
+metadata:
+  labels:
+    app.kubernetes.io/name: garage-storage-controller
+    app.kubernetes.io/managed-by: kustomize
+  name: bucket-sample
+spec:
+  name: bucket-global-name
