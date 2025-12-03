@@ -51,7 +51,7 @@ func (b *Bucket) MarkBucketNotReady(
 		LastTransitionTime: metav1.Now(),
 		Reason:             reason,
 		Message:            fmt.Sprintf(message, args...),
-		ObservedGeneration: b.Object.Generation, // TODO: verify correct generation used
+		ObservedGeneration: b.Object.Generation,
 	}
 
 	meta.SetStatusCondition(&b.Object.Status.Conditions, cond)
@@ -92,6 +92,7 @@ func (b *Bucket) updateReadyCondition() {
 		Reason:             readyReason,
 		Message:            readyMessage,
 		LastTransitionTime: metav1.Now(),
+		ObservedGeneration: b.Object.GetGeneration(),
 	}
 	meta.SetStatusCondition(&b.Object.Status.Conditions, readyCondition)
 	b.Object.Status.ObservedGeneration = b.Object.GetGeneration()

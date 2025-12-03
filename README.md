@@ -30,3 +30,20 @@ TBD
 ### Project setup
 
 Scaffolding done with kubebuilder. See [docs](https://book.kubebuilder.io/reference/reference) for more info.
+
+### Running tests
+
+#### E2E
+
+Install Kind:
+
+- Download a specific release:
+```sh
+version="v0.30.0"
+[ "$(uname -m)" = x86_64 ] && curl -Lo ./kind https://kind.sigs.k8s.io/dl/$version/kind-linux-amd64
+chmod +x ./kind
+sudo mv ./kind /usr/local/bin/kind
+```
+
+- Or latest from Homebrew: `brew install kind`
+

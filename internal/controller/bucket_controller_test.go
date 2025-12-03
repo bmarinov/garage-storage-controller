@@ -28,6 +28,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	garagev1alpha1 "github.com/bmarinov/garage-storage-controller/api/v1alpha1"
+	"github.com/bmarinov/garage-storage-controller/internal/s3"
 )
 
 var _ = Describe("Bucket Controller", func() {
@@ -41,6 +42,7 @@ var _ = Describe("Bucket Controller", func() {
 			Namespace: "default", // TODO(user):Modify as needed
 		}
 		bucket := &garagev1alpha1.Bucket{}
+		expectedName := "foo-bucket-alias"
 
 		BeforeEach(func() {
 			By("creating the custom resource for the Kind Bucket")
@@ -51,7 +53,9 @@ var _ = Describe("Bucket Controller", func() {
 						Name:      resourceName,
 						Namespace: "default",
 					},
-					// TODO(user): Specify other spec details if needed.
+					Spec: garagev1alpha1.BucketSpec{
+						Name: expectedName,
+					},
 				}
 				Expect(k8sClient.Create(ctx, resource)).To(Succeed())
 			}
@@ -66,19 +70,78 @@ var _ = Describe("Bucket Controller", func() {
 			By("Cleanup the specific resource instance Bucket")
 			Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
 		})
-		It("should successfully reconcile the resource", func() {
+		It("should successfully reconcile for existing external resource", func() {
 			By("Reconciling the created resource")
+			stub := newS3APIStub()
 			controllerReconciler := &BucketReconciler{
 				Client: k8sClient,
 				Scheme: k8sClient.Scheme(),
+				s3:     stub,
 			}
+
+			existing := s3.Bucket{
+				ID: "3f5z",
+			}
+			stub.buckets[expectedName] = existing
 
 			_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
 				NamespacedName: typeNamespacedName,
 			})
 			Expect(err).NotTo(HaveOccurred())
-			// TODO(user): Add more specific assertions depending on your controller's reconciliation logic.
-			// Example: If you expect a certain status condition after reconciliation, verify it here.
+
+			By("resource with ready condition")
+			bucketRes := garagev1alpha1.Bucket{}
+			Eventually(func(g Gomega) {
+				g.Expect(k8sClient.Get(ctx, typeNamespacedName, &bucketRes)).To(Succeed())
+
+				var bucketCond metav1.Condition
+				_ = g.Expect((bucketRes.Status.Conditions)).To(ContainElement(SatisfyAll(
+					WithTransform(
+						func(c metav1.Condition) string { return c.Type },
+						Equal(string(ConditionBucketReady)),
+					),
+					WithTransform(
+						func(c metav1.Condition) metav1.ConditionStatus { return c.Status },
+						Equal(metav1.ConditionTrue),
+					),
+				), &bucketCond))
+
+				var readyCond metav1.Condition
+				_ = g.Expect((bucketRes.Status.Conditions)).To(ContainElement(SatisfyAll(
+					WithTransform(
+						func(c metav1.Condition) string { return c.Type },
+						Equal(string(ConditionReady)),
+					),
+					WithTransform(
+						func(c metav1.Condition) metav1.ConditionStatus { return c.Status },
+						Equal(metav1.ConditionTrue),
+					),
+				), &readyCond))
+
+				g.Expect(bucketCond.ObservedGeneration).To(Equal(bucketRes.Generation))
+				g.Expect(readyCond.ObservedGeneration).To(Equal(bucketRes.Generation))
+			}).Should(Succeed())
 		})
 	})
 })
+
+func newS3APIStub() *s3APIStub {
+	return &s3APIStub{
+		buckets: make(map[string]s3.Bucket),
+	}
+}
+
+type s3APIStub struct {
+	buckets map[string]s3.Bucket
+}
+
+// Get implements S3Client.
+func (s *s3APIStub) Get(ctx context.Context, globalAlias string) (s3.Bucket, error) {
+	b, got := s.buckets[globalAlias]
+	if !got {
+		return s3.Bucket{}, s3.ErrBucketNotFound
+	}
+	return b, nil
+}
+
+var _ S3Client = &s3APIStub{}

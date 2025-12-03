@@ -70,7 +70,7 @@ type BucketStatus struct {
 
 // Bucket is the Schema for the buckets API
 type Bucket struct {
-	// +required
+	// +optional
 	metav1.TypeMeta `json:",inline"`
 
 	// metadata is a standard object metadata
