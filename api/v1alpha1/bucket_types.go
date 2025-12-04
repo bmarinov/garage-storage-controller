@@ -28,6 +28,7 @@ type BucketSpec struct {
 	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="Value is immutable"
 	Name string `json:"name"`
 
+	// MaxSize in bytes.
 	// +optional
 	MaxSize int64 `json:"maxSize,omitempty"`
 

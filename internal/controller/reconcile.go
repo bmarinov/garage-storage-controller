@@ -3,6 +3,7 @@ package controller
 import (
 	"context"
 	"errors"
+	"fmt"
 
 	garagev1alpha1 "github.com/bmarinov/garage-storage-controller/api/v1alpha1"
 	"github.com/bmarinov/garage-storage-controller/internal/s3"
@@ -14,32 +15,43 @@ func (r *BucketReconciler) reconcileBucket(ctx context.Context, bucket *Bucket) 
 	if err != nil {
 		if errors.Is(err, s3.ErrBucketNotFound) {
 			// create
+			// bucket = r.s3.Create(ctx, placeholderfoo)
 			bucket.MarkBucketNotReady("BucketNotFound", "Bucket with alias %s not found", alias)
+
+			bucket.Object.Status.BucketID = "foo-123"
 		} else {
 			bucket.MarkBucketNotReady("UnknownState", "S3 API error")
 			return err
 		}
 	}
 
-	diff := compare(s3Bucket, *bucket.Object)
-
-	if diff.needUpdate {
-		bucket.MarkBucketNotReady("BucketDrift", "Progressing..")
-
-		// return foo.patch()
-	} else {
-		bucket.MarkBucketReady()
+	if bucket.Object.Status.BucketID == "" {
+		bucket.Object.Status.BucketID = s3Bucket.ID
 	}
 
+	diff := compareSpec(s3Bucket, bucket.Object.Spec)
+
+	if diff {
+		err := r.s3.Update(ctx, s3Bucket.ID, s3.Quotas{
+			MaxObjects: bucket.Object.Spec.MaxObjects,
+			MaxSize:    bucket.Object.Spec.MaxSize,
+		})
+
+		if err != nil {
+			bucket.MarkBucketNotReady("Update Failed", "Failed to update bucket configuration: %v", err)
+			return fmt.Errorf("updating external bucket to spec: %w", err)
+		}
+	}
+
+	bucket.MarkBucketReady()
 	return nil
 }
 
-func compare(existing s3.Bucket, desired garagev1alpha1.Bucket) bucketDiff {
+func compareSpec(bucket s3.Bucket, spec garagev1alpha1.BucketSpec) bool {
+	if bucket.Quotas.MaxObjects != spec.MaxObjects ||
+		bucket.Quotas.MaxSize != spec.MaxSize {
+		return true
+	}
 
-	return bucketDiff{}
-}
-
-// TBD
-type bucketDiff struct {
-	needUpdate bool
+	return false
 }
