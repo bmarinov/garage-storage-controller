@@ -34,7 +34,7 @@ import (
 
 var _ = Describe("Bucket Controller", func() {
 	Context("When reconciling a resource", func() {
-		const resourceName = "test-resource"
+		const resourceName = "test-bucket"
 
 		ctx := context.Background()
 
@@ -42,7 +42,7 @@ var _ = Describe("Bucket Controller", func() {
 			Name:      resourceName,
 			Namespace: "default",
 		}
-		expectedName := "foo-bucket-alias"
+		bucketName := "foo-bucket-alias"
 
 		BeforeEach(func() {
 			By("creating the custom resource for the Kind Bucket")
@@ -55,7 +55,7 @@ var _ = Describe("Bucket Controller", func() {
 						Namespace: "default",
 					},
 					Spec: garagev1alpha1.BucketSpec{
-						Name: expectedName,
+						Name: bucketName,
 					},
 				}
 				Expect(k8sClient.Create(ctx, resource)).To(Succeed())
@@ -80,7 +80,8 @@ var _ = Describe("Bucket Controller", func() {
 			}
 
 			existing := s3.Bucket{
-				ID: "3f5z",
+				ID:            "3f5z",
+				GlobalAliases: []string{bucketName},
 			}
 			stub.buckets[existing.ID] = existing
 
@@ -89,13 +90,13 @@ var _ = Describe("Bucket Controller", func() {
 			})
 			Expect(err).NotTo(HaveOccurred())
 
-			By("resource condition and generation")
-			bucketRes := garagev1alpha1.Bucket{}
+			By("updating resource condition and generation")
 			Eventually(func(g Gomega) {
-				g.Expect(k8sClient.Get(ctx, typeNamespacedName, &bucketRes)).To(Succeed())
+				var bucket garagev1alpha1.Bucket
+				g.Expect(k8sClient.Get(ctx, typeNamespacedName, &bucket)).To(Succeed())
 
 				var bucketCond metav1.Condition
-				_ = g.Expect((bucketRes.Status.Conditions)).To(ContainElement(SatisfyAll(
+				_ = g.Expect((bucket.Status.Conditions)).To(ContainElement(SatisfyAll(
 					WithTransform(
 						func(c metav1.Condition) string { return c.Type },
 						Equal(string(ConditionBucketReady)),
@@ -107,7 +108,7 @@ var _ = Describe("Bucket Controller", func() {
 				), &bucketCond))
 
 				var readyCond metav1.Condition
-				_ = g.Expect((bucketRes.Status.Conditions)).To(ContainElement(SatisfyAll(
+				_ = g.Expect((bucket.Status.Conditions)).To(ContainElement(SatisfyAll(
 					WithTransform(
 						func(c metav1.Condition) string { return c.Type },
 						Equal(string(ConditionReady)),
@@ -118,11 +119,19 @@ var _ = Describe("Bucket Controller", func() {
 					),
 				), &readyCond))
 
-				g.Expect(bucketCond.ObservedGeneration).To(Equal(bucketRes.Generation))
-				g.Expect(readyCond.ObservedGeneration).To(Equal(bucketRes.Generation))
+				g.Expect(bucketCond.ObservedGeneration).To(Equal(bucket.Generation))
+				g.Expect(readyCond.ObservedGeneration).To(Equal(bucket.Generation))
+			}).Should(Succeed())
+
+			By("setting bucket ID")
+			Eventually(func(g Gomega) {
+				var bucket garagev1alpha1.Bucket
+				g.Expect(k8sClient.Get(ctx, typeNamespacedName, &bucket)).To(Succeed())
+
+				g.Expect(bucket.Status.BucketID).To(Equal(existing.ID))
 			}).Should(Succeed())
 		})
-		FIt("should apply modifications to existing bucket", func() {
+		It("should apply modifications to existing bucket", func() {
 			By("updating bucket quota")
 
 			var bucket garagev1alpha1.Bucket
