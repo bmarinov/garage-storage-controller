@@ -7,5 +7,14 @@ var ErrBucketNotFound = errors.New("bucket not found")
 type Bucket struct {
 	ID string
 
-	// Quotas
+	GlobalAliases []string
+
+	Quotas Quotas
+
+	// Keys
+}
+
+type Quotas struct {
+	MaxObjects int64
+	MaxSize    int64
 }

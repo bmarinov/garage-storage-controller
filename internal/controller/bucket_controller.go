@@ -36,6 +36,7 @@ const (
 
 type S3Client interface {
 	Get(ctx context.Context, globalAlias string) (s3.Bucket, error)
+	Update(ctx context.Context, id string, quotas s3.Quotas) error
 }
 
 // BucketReconciler reconciles a Bucket object
@@ -76,7 +77,6 @@ func (r *BucketReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 	orig := bucket.Status.DeepCopy()
 
 	bucketMgr := Bucket{Object: &bucket}
-
 	bucketMgr.InitializeConditions()
 
 	err = r.reconcileBucket(ctx, &bucketMgr)

@@ -18,6 +18,7 @@ package controller
 
 import (
 	"context"
+	"slices"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -39,13 +40,13 @@ var _ = Describe("Bucket Controller", func() {
 
 		typeNamespacedName := types.NamespacedName{
 			Name:      resourceName,
-			Namespace: "default", // TODO(user):Modify as needed
+			Namespace: "default",
 		}
-		bucket := &garagev1alpha1.Bucket{}
 		expectedName := "foo-bucket-alias"
 
 		BeforeEach(func() {
 			By("creating the custom resource for the Kind Bucket")
+			bucket := &garagev1alpha1.Bucket{}
 			err := k8sClient.Get(ctx, typeNamespacedName, bucket)
 			if err != nil && errors.IsNotFound(err) {
 				resource := &garagev1alpha1.Bucket{
@@ -62,7 +63,6 @@ var _ = Describe("Bucket Controller", func() {
 		})
 
 		AfterEach(func() {
-			// TODO(user): Cleanup logic after each test, like removing the resource instance.
 			resource := &garagev1alpha1.Bucket{}
 			err := k8sClient.Get(ctx, typeNamespacedName, resource)
 			Expect(err).NotTo(HaveOccurred())
@@ -82,14 +82,14 @@ var _ = Describe("Bucket Controller", func() {
 			existing := s3.Bucket{
 				ID: "3f5z",
 			}
-			stub.buckets[expectedName] = existing
+			stub.buckets[existing.ID] = existing
 
 			_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
 				NamespacedName: typeNamespacedName,
 			})
 			Expect(err).NotTo(HaveOccurred())
 
-			By("resource with ready condition")
+			By("resource condition and generation")
 			bucketRes := garagev1alpha1.Bucket{}
 			Eventually(func(g Gomega) {
 				g.Expect(k8sClient.Get(ctx, typeNamespacedName, &bucketRes)).To(Succeed())
@@ -122,6 +122,39 @@ var _ = Describe("Bucket Controller", func() {
 				g.Expect(readyCond.ObservedGeneration).To(Equal(bucketRes.Generation))
 			}).Should(Succeed())
 		})
+		FIt("should apply modifications to existing bucket", func() {
+			By("updating bucket quota")
+
+			var bucket garagev1alpha1.Bucket
+
+			Expect(k8sClient.Get(ctx, typeNamespacedName, &bucket)).To(Succeed())
+			bucket.Spec.MaxSize = 9500
+			bucket.Spec.MaxObjects = 900
+			Expect(k8sClient.Update(ctx, &bucket)).To(Succeed())
+
+			const bucketID = "abc333"
+
+			stub := newS3APIStub()
+			stub.buckets[bucketID] = s3.Bucket{
+				ID:            bucketID,
+				GlobalAliases: []string{bucket.Spec.Name},
+				Quotas:        s3.Quotas{},
+			}
+			controllerReconciler := &BucketReconciler{
+				Client: k8sClient,
+				Scheme: k8sClient.Scheme(),
+				s3:     stub,
+			}
+
+			// act
+			_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{NamespacedName: typeNamespacedName})
+			Expect(err).ShouldNot(HaveOccurred())
+
+			// assert
+			quota := stub.buckets[bucketID].Quotas
+			Expect(quota.MaxSize).To(Equal(bucket.Spec.MaxSize))
+			Expect(quota.MaxObjects).To(Equal(bucket.Spec.MaxObjects))
+		})
 	})
 })
 
@@ -132,16 +165,32 @@ func newS3APIStub() *s3APIStub {
 }
 
 type s3APIStub struct {
+	// buckets by id
 	buckets map[string]s3.Bucket
+}
+
+// Update implements S3Client.
+func (s *s3APIStub) Update(ctx context.Context, id string, quotas s3.Quotas) error {
+	b, got := s.buckets[id]
+	if !got {
+		return s3.ErrBucketNotFound
+	}
+
+	b.Quotas.MaxObjects = quotas.MaxObjects
+	b.Quotas.MaxSize = quotas.MaxSize
+	s.buckets[id] = b
+
+	return nil
 }
 
 // Get implements S3Client.
 func (s *s3APIStub) Get(ctx context.Context, globalAlias string) (s3.Bucket, error) {
-	b, got := s.buckets[globalAlias]
-	if !got {
-		return s3.Bucket{}, s3.ErrBucketNotFound
+	for _, v := range s.buckets {
+		if slices.Contains(v.GlobalAliases, globalAlias) {
+			return v, nil
+		}
 	}
-	return b, nil
+	return s3.Bucket{}, s3.ErrBucketNotFound
 }
 
 var _ S3Client = &s3APIStub{}
