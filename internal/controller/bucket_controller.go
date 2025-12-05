@@ -35,6 +35,7 @@ const (
 	bucketControllerName = "garage-storage-controller"
 )
 
+// TODO: proper naming
 type S3Client interface {
 	Create(ctx context.Context, globalAlias string) (s3.Bucket, error)
 	Get(ctx context.Context, globalAlias string) (s3.Bucket, error)
@@ -46,6 +47,14 @@ type BucketReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
 	s3     S3Client
+}
+
+func New(apiClient client.Client, scheme *runtime.Scheme, s3Client S3Client) *BucketReconciler {
+	return &BucketReconciler{
+		Client: apiClient,
+		Scheme: scheme,
+		s3:     s3Client,
+	}
 }
 
 // +kubebuilder:rbac:groups=garage.getclustered.net,resources=buckets,verbs=get;list;watch;create;update;patch;delete

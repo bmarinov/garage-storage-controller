@@ -36,22 +36,6 @@ type BucketSpec struct {
 	MaxObjects int64 `json:"maxObjects,omitempty"`
 }
 
-type BucketKey struct {
-	// +required
-	SecretName string
-	// +required
-	Permissions Permissions `json:"permissions"`
-}
-
-type Permissions struct {
-	// +optional
-	Owner bool `json:"owner"`
-	// +optional
-	Read bool `json:"read"`
-	// +optional
-	Write bool `json:"write"`
-}
-
 // BucketStatus defines the observed state of Bucket.
 type BucketStatus struct {
 	// +optional
