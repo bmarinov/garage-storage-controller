@@ -14,11 +14,13 @@ func (r *BucketReconciler) reconcileBucket(ctx context.Context, bucket *Bucket) 
 	s3Bucket, err := r.s3.Get(ctx, alias)
 	if err != nil {
 		if errors.Is(err, s3.ErrBucketNotFound) {
-			bucket.MarkBucketNotReady("BucketNotFound", "Bucket with alias %s not found", alias)
-			// TODO: create
-			return err
+			s3Bucket, err = r.s3.Create(ctx, alias)
+			if err != nil {
+				bucket.MarkBucketNotReady("CreateFailed", "Failed to create bucket '%s': %v", alias, err)
+				return fmt.Errorf("create new bucket: %w", err)
+			}
 		} else {
-			bucket.MarkBucketNotReady("UnknownState", "S3 API error")
+			bucket.MarkBucketNotReady("UnknownState", "S3 API error: %v", err)
 			return err
 		}
 	}

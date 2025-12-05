@@ -36,6 +36,7 @@ const (
 )
 
 type S3Client interface {
+	Create(ctx context.Context, globalAlias string) (s3.Bucket, error)
 	Get(ctx context.Context, globalAlias string) (s3.Bucket, error)
 	Update(ctx context.Context, id string, quotas s3.Quotas) error
 }

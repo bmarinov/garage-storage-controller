@@ -18,11 +18,13 @@ package controller
 
 import (
 	"context"
+	"errors"
 	"slices"
 
+	"github.com/google/uuid"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	"k8s.io/apimachinery/pkg/api/errors"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
@@ -48,7 +50,7 @@ var _ = Describe("Bucket Controller", func() {
 			By("creating the custom resource for the Kind Bucket")
 			bucket := &garagev1alpha1.Bucket{}
 			err := k8sClient.Get(ctx, typeNamespacedName, bucket)
-			if err != nil && errors.IsNotFound(err) {
+			if err != nil && apierrors.IsNotFound(err) {
 				resource := &garagev1alpha1.Bucket{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      resourceName,
@@ -72,7 +74,7 @@ var _ = Describe("Bucket Controller", func() {
 		})
 		It("should successfully reconcile for existing external resource", func() {
 			By("Reconciling the created resource")
-			stub := newS3APIStub()
+			stub := newS3APIFake()
 			controllerReconciler := &BucketReconciler{
 				Client: k8sClient,
 				Scheme: k8sClient.Scheme(),
@@ -143,7 +145,7 @@ var _ = Describe("Bucket Controller", func() {
 
 			const bucketID = "abc333"
 
-			stub := newS3APIStub()
+			stub := newS3APIFake()
 			stub.buckets[bucketID] = s3.Bucket{
 				ID:            bucketID,
 				GlobalAliases: []string{bucket.Spec.Name},
@@ -164,22 +166,91 @@ var _ = Describe("Bucket Controller", func() {
 			Expect(quota.MaxSize).To(Equal(bucket.Spec.MaxSize))
 			Expect(quota.MaxObjects).To(Equal(bucket.Spec.MaxObjects))
 		})
+		It("should create external S3 bucket matching spec", func() {
+			By("creating a Bucket custom resource")
+			key := types.NamespacedName{Namespace: "default", Name: "bar-bucket"}
+			bucketName := "foo-storage"
+
+			resource := garagev1alpha1.Bucket{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      key.Name,
+					Namespace: key.Namespace,
+				},
+				Spec: garagev1alpha1.BucketSpec{
+					Name:       bucketName,
+					MaxSize:    365,
+					MaxObjects: 9005,
+				},
+			}
+			Expect(k8sClient.Create(ctx, &resource)).To(Succeed())
+
+			By("reconciling")
+			var s3Fake = newS3APIFake()
+			controllerReconciler := &BucketReconciler{
+				Client: k8sClient,
+				Scheme: k8sClient.Scheme(),
+				s3:     s3Fake,
+			}
+			_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{NamespacedName: key})
+			Expect(err).ShouldNot(HaveOccurred())
+
+			By("waiting for external bucket to be provisioned")
+			Eventually(func(g Gomega) {
+				var bucket garagev1alpha1.Bucket
+				g.Expect(k8sClient.Get(ctx, key, &bucket)).To(Succeed())
+
+				g.Expect(bucket.Status.Conditions).To(ContainElement(
+					SatisfyAll(
+						WithTransform(
+							func(c metav1.Condition) string { return c.Type },
+							Equal(string(ConditionReady)),
+						),
+						WithTransform(
+							func(c metav1.Condition) metav1.ConditionStatus { return c.Status },
+							Equal(metav1.ConditionTrue),
+						),
+						WithTransform(
+							func(c metav1.Condition) int64 { return c.ObservedGeneration },
+							Equal(bucket.Generation),
+						)),
+				))
+			}).Should(Succeed())
+
+			By("comparing the bucket config with spec")
+			created, _ := s3Fake.Get(ctx, bucketName)
+			Expect(created.Quotas.MaxObjects).To(Equal(resource.Spec.MaxObjects))
+			Expect(created.Quotas.MaxSize).To(Equal(resource.Spec.MaxSize))
+		})
 	})
 })
 
-func newS3APIStub() *s3APIStub {
-	return &s3APIStub{
+func newS3APIFake() *s3APIFake {
+	return &s3APIFake{
 		buckets: make(map[string]s3.Bucket),
 	}
 }
 
-type s3APIStub struct {
+type s3APIFake struct {
 	// buckets by id
 	buckets map[string]s3.Bucket
 }
 
+// Create implements S3Client.
+func (s *s3APIFake) Create(ctx context.Context, globalAlias string) (s3.Bucket, error) {
+	if _, err := s.Get(ctx, globalAlias); err == nil {
+		return s3.Bucket{}, errors.New("expected get error, likely already exists")
+	}
+
+	new := s3.Bucket{
+		ID:            uuid.NewString(),
+		GlobalAliases: []string{globalAlias},
+	}
+	s.buckets[new.ID] = new
+	return new, nil
+}
+
 // Update implements S3Client.
-func (s *s3APIStub) Update(ctx context.Context, id string, quotas s3.Quotas) error {
+func (s *s3APIFake) Update(ctx context.Context, id string, quotas s3.Quotas) error {
 	b, got := s.buckets[id]
 	if !got {
 		return s3.ErrBucketNotFound
@@ -193,7 +264,7 @@ func (s *s3APIStub) Update(ctx context.Context, id string, quotas s3.Quotas) err
 }
 
 // Get implements S3Client.
-func (s *s3APIStub) Get(ctx context.Context, globalAlias string) (s3.Bucket, error) {
+func (s *s3APIFake) Get(ctx context.Context, globalAlias string) (s3.Bucket, error) {
 	for _, v := range s.buckets {
 		if slices.Contains(v.GlobalAliases, globalAlias) {
 			return v, nil
@@ -202,4 +273,4 @@ func (s *s3APIStub) Get(ctx context.Context, globalAlias string) (s3.Bucket, err
 	return s3.Bucket{}, s3.ErrBucketNotFound
 }
 
-var _ S3Client = &s3APIStub{}
+var _ S3Client = &s3APIFake{}
