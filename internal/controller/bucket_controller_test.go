@@ -74,18 +74,18 @@ var _ = Describe("Bucket Controller", func() {
 		})
 		It("should successfully reconcile for existing external resource", func() {
 			By("Reconciling the created resource")
-			stub := newS3APIFake()
+			s3API := newS3APIFake()
 			controllerReconciler := &BucketReconciler{
 				Client: k8sClient,
 				Scheme: k8sClient.Scheme(),
-				s3:     stub,
+				s3:     s3API,
 			}
 
 			existing := s3.Bucket{
 				ID:            "3f5z",
 				GlobalAliases: []string{bucketName},
 			}
-			stub.buckets[existing.ID] = existing
+			s3API.buckets[existing.ID] = existing
 
 			_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
 				NamespacedName: typeNamespacedName,
@@ -145,8 +145,8 @@ var _ = Describe("Bucket Controller", func() {
 
 			const bucketID = "abc333"
 
-			stub := newS3APIFake()
-			stub.buckets[bucketID] = s3.Bucket{
+			s3API := newS3APIFake()
+			s3API.buckets[bucketID] = s3.Bucket{
 				ID:            bucketID,
 				GlobalAliases: []string{bucket.Spec.Name},
 				Quotas:        s3.Quotas{},
@@ -154,7 +154,7 @@ var _ = Describe("Bucket Controller", func() {
 			controllerReconciler := &BucketReconciler{
 				Client: k8sClient,
 				Scheme: k8sClient.Scheme(),
-				s3:     stub,
+				s3:     s3API,
 			}
 
 			// act
@@ -162,7 +162,7 @@ var _ = Describe("Bucket Controller", func() {
 			Expect(err).ShouldNot(HaveOccurred())
 
 			// assert
-			quota := stub.buckets[bucketID].Quotas
+			quota := s3API.buckets[bucketID].Quotas
 			Expect(quota.MaxSize).To(Equal(bucket.Spec.MaxSize))
 			Expect(quota.MaxObjects).To(Equal(bucket.Spec.MaxObjects))
 		})
