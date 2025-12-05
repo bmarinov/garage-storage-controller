@@ -14,6 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
+// +kubebuilder:validation:Required
 package v1alpha1
 
 import (
@@ -22,29 +23,32 @@ import (
 
 // BucketSpec defines the desired state of Bucket
 type BucketSpec struct {
-	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
-	// Important: Run "make" to regenerate code after modifying this file
-	// The following markers will use OpenAPI v3 schema to validate the value
-	// More info: https://book.kubebuilder.io/reference/markers/crd-validation.html
-
 	// Name is the global alias of a Bucket.
-	// +required
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="Value is immutable"
 	Name string `json:"name"`
 
-	// TBD: support local / user-scoped alias?
+	// MaxSize in bytes.
 	// +optional
-	LocalAlias *BucketAlias `json:"localAlias,omitempty"`
+	MaxSize int64 `json:"maxSize,omitempty"`
+
+	// +optional
+	MaxObjects int64 `json:"maxObjects,omitempty"`
 }
 
-type BucketAlias struct {
-	AccessKeyID string      `json:"accessKeyId"`
-	Alias       string      `json:"alias"`
+type BucketKey struct {
+	// +required
+	SecretName string
+	// +required
 	Permissions Permissions `json:"permissions"`
 }
 
 type Permissions struct {
+	// +optional
 	Owner bool `json:"owner"`
-	Read  bool `json:"read"`
+	// +optional
+	Read bool `json:"read"`
+	// +optional
 	Write bool `json:"write"`
 }
 
@@ -59,7 +63,7 @@ type BucketStatus struct {
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
 
 	// +optional
-	BucketID *string `json:"bucketId,omitempty"`
+	BucketID string `json:"bucketId,omitempty"`
 
 	// +optional
 	LastSync *metav1.Time `json:"lastSync,omitempty"`

@@ -1,11 +1,17 @@
 Storage controller for S3-compatible backends.
 ---
 
+## Overview
+
+Creating and managing storage buckets through Kubernetes API resources on private cloud infra should be simple and boring.
+
 ## Scope
+- Create buckets and access keys for namespace workloads with a few CRDs.
+- Expose keys through Kubernetes secrets.
+- Focus on the common use cases while keeping this controller easy to operate.
 
-Create keys and buckets using the admin API. Bucket requests can be generated out of `Bucket` CRDs. Alternatively, create a `BucketRequest` resource directly.
+**Note:** Deleting `Bucket` API resources will never remove the actual buckets on the storage backend. Data loss is not boring. And we aim for boring here.
 
-The goal for this is to be as simple as it gets while covering the basic use-cases.
 
 ## Install
 
