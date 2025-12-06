@@ -20,6 +20,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/google/uuid"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -42,10 +43,10 @@ var _ = Describe("AccessKey Controller", func() {
 			Name:      resourceName,
 			Namespace: "default",
 		}
-		accesskey := &garagev1alpha1.AccessKey{}
 
 		BeforeEach(func() {
 			By("creating the custom resource for the Kind AccessKey")
+			accesskey := &garagev1alpha1.AccessKey{}
 			err := k8sClient.Get(ctx, typeNamespacedName, accesskey)
 			if err != nil && errors.IsNotFound(err) {
 				resource := &garagev1alpha1.AccessKey{
@@ -73,7 +74,7 @@ var _ = Describe("AccessKey Controller", func() {
 			By("Cleanup the specific resource instance AccessKey")
 			Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
 		})
-		FIt("should successfully reconcile the resource", func() {
+		It("should successfully reconcile the resource", func() {
 			By("reconciling the created resource")
 
 			akm := newAccessMgrFake()
@@ -84,34 +85,76 @@ var _ = Describe("AccessKey Controller", func() {
 			})
 			Expect(err).NotTo(HaveOccurred())
 			By("creating external access key")
-
 			Expect(akm.keys).To(HaveLen(1))
-			externalKey := akm.keys[0]
 
-			conventionalName := fmt.Sprintf("%s-%s", accesskey.Namespace, accesskey.Name)
-			Expect(externalKey).To(Equal(conventionalName))
+			By("naming external key according to convention")
+			externalKey := akm.keys[0]
+			conventionalName := fmt.Sprintf("%s-%s", typeNamespacedName.Namespace, typeNamespacedName.Name)
+			Expect(externalKey.Name).To(Equal(conventionalName))
+
+			By("setting AccessKey status with generation")
+			Eventually(func(g Gomega) {
+				var accessKey garagev1alpha1.AccessKey
+				g.Expect(k8sClient.Get(ctx, typeNamespacedName, &accessKey)).To(Succeed())
+
+				var keyCondition metav1.Condition
+				_ = g.Expect((accessKey.Status.Conditions)).To(ContainElement(SatisfyAll(
+					WithTransform(
+						func(c metav1.Condition) string { return c.Type },
+						Equal(AccessKeyReady),
+					),
+					WithTransform(
+						func(c metav1.Condition) metav1.ConditionStatus { return c.Status },
+						Equal(metav1.ConditionTrue),
+					),
+				), &keyCondition))
+
+				g.Expect(keyCondition.ObservedGeneration).To(Equal(accessKey.Generation))
+			}).Should(Succeed())
+
+			By("storing key ID in status")
+			Eventually(func(g Gomega) {
+				var accessKey garagev1alpha1.AccessKey
+				g.Expect(k8sClient.Get(ctx, typeNamespacedName, &accessKey)).To(Succeed())
+
+				expected := akm.keys[0].ID
+				g.Expect(accessKey.Status.ID).To(Equal(expected))
+			}).Should(Succeed())
 		})
+
+		// It("should reconcile with existing external access key", func() {
+		// })
 	})
 })
 
 type accessMgrFake struct {
-	keys []string
+	keys []s3.AccessKey
 }
 
 func newAccessMgrFake() *accessMgrFake {
 	return &accessMgrFake{}
 }
 
+// Get implements AccessKeyManager.
+func (a *accessMgrFake) Get(ctx context.Context, id string, search string) {
+	panic("unimplemented")
+}
+
 // Create implements AccessKeyManager.
 func (a *accessMgrFake) Create(ctx context.Context, keyName string) (s3.AccessKey, error) {
 	for _, v := range a.keys {
-		if v == keyName {
+		if v.Name == keyName {
 			return s3.AccessKey{}, fmt.Errorf("key %s exists", keyName)
 		}
 	}
 
-	a.keys = append(a.keys, keyName)
-	return s3.AccessKey{}, nil
+	key := s3.AccessKey{
+		ID:     uuid.NewString(),
+		Secret: uuid.NewString(),
+		Name:   keyName,
+	}
+	a.keys = append(a.keys, key)
+	return key, nil
 }
 
 var _ AccessKeyManager = &accessMgrFake{}

@@ -101,7 +101,7 @@ var _ = Describe("Bucket Controller", func() {
 				_ = g.Expect((bucket.Status.Conditions)).To(ContainElement(SatisfyAll(
 					WithTransform(
 						func(c metav1.Condition) string { return c.Type },
-						Equal(string(ConditionBucketReady)),
+						Equal(BucketReady),
 					),
 					WithTransform(
 						func(c metav1.Condition) metav1.ConditionStatus { return c.Status },
@@ -113,7 +113,7 @@ var _ = Describe("Bucket Controller", func() {
 				_ = g.Expect((bucket.Status.Conditions)).To(ContainElement(SatisfyAll(
 					WithTransform(
 						func(c metav1.Condition) string { return c.Type },
-						Equal(string(ConditionReady)),
+						Equal(Ready),
 					),
 					WithTransform(
 						func(c metav1.Condition) metav1.ConditionStatus { return c.Status },
@@ -203,7 +203,7 @@ var _ = Describe("Bucket Controller", func() {
 					SatisfyAll(
 						WithTransform(
 							func(c metav1.Condition) string { return c.Type },
-							Equal(string(ConditionReady)),
+							Equal(Ready),
 						),
 						WithTransform(
 							func(c metav1.Condition) metav1.ConditionStatus { return c.Status },

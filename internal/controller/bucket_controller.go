@@ -78,10 +78,10 @@ func (r *BucketReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 
 	orig := bucket.Status.DeepCopy()
 
-	bucketMgr := Bucket{Object: &bucket}
-	bucketMgr.InitializeConditions()
+	b := Bucket{Object: &bucket}
+	b.InitializeConditions()
 
-	err = r.reconcileBucket(ctx, &bucketMgr)
+	err = r.reconcileBucket(ctx, &b)
 
 	if err != nil {
 		return ctrl.Result{}, err

@@ -19,7 +19,9 @@ package controller
 import (
 	"context"
 
+	"k8s.io/apimachinery/pkg/api/equality"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -47,6 +49,7 @@ func NewAccessKeyReconciler(c client.Client, s *runtime.Scheme, keyMgr AccessKey
 
 type AccessKeyManager interface {
 	Create(ctx context.Context, keyName string) (s3.AccessKey, error)
+	Get(ctx context.Context, id string, search string)
 }
 
 // +kubebuilder:rbac:groups=garage.getclustered.net,resources=accesskeys,verbs=get;list;watch;create;update;patch;delete
@@ -56,8 +59,8 @@ type AccessKeyManager interface {
 func (r *AccessKeyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	_ = logf.FromContext(ctx)
 
-	var ac garagev1alpha1.AccessKey
-	err := r.Get(ctx, req.NamespacedName, &ac)
+	var accessKey garagev1alpha1.AccessKey
+	err := r.Get(ctx, req.NamespacedName, &accessKey)
 	if err != nil {
 		if apierrors.IsNotFound(err) {
 			return ctrl.Result{}, nil
@@ -65,48 +68,73 @@ func (r *AccessKeyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		return ctrl.Result{}, err
 	}
 
-	if ac.Status.ObservedGeneration == 0 {
-		// new, create access key
-		externalKeyName := namespacedKeyName(ac)
-		_, err := r.accessKey.Create(ctx, externalKeyName)
+	orig := accessKey.Status.DeepCopy()
 
-		// TODO: handle consistency issues gracefully
-		if err != nil {
-			return ctrl.Result{}, err
-		}
+	key := AccessKey{Object: &accessKey}
+	key.InitializeConditions()
 
-		// create secret
+	err = r.reconcileAccessKey(ctx, &key)
+	if err != nil {
+		return ctrl.Result{}, err
 	}
 
-	if ac.Status.ObservedGeneration != ac.GetGeneration() {
-		// spec change
+	key.updateStatus()
 
-		panic("implement")
+	if !equality.Semantic.DeepEqual(*orig, accessKey.Status) {
+		err = r.Status().Patch(ctx, &accessKey, client.Merge, client.FieldOwner(bucketControllerName))
+		return ctrl.Result{}, err
 	}
 
-	if ac.Status.ID == "" {
-		// fetch key ID
-	}
-
-	// up to date
 	return ctrl.Result{}, nil
 }
 
-func (r *AccessKeyReconciler) createNewKey(ctx context.Context, resource garagev1alpha1.AccessKey) error {
-	externalKeyName := namespacedKeyName(resource)
-	_, err := r.accessKey.Create(ctx, externalKeyName)
+func (r *AccessKeyReconciler) reconcileAccessKey(ctx context.Context, key *AccessKey) error {
+	if key.Object.Status.ObservedGeneration == key.Object.Generation &&
+		key.AccessKeyCondition().Status == v1.ConditionTrue &&
+		key.Object.Status.ID != "" {
+		// object exists
+		return nil
+	}
 
+	externalKey, err := r.ensureExternalKey(ctx, *key.Object)
 	if err != nil {
+		// set status to fail
 		return err
 	}
+
+	key.Object.Status.ID = externalKey.ID
+	key.MarkAccessKeyReady()
+
+	err = r.ensureSecret(ctx, *key.Object, externalKey.Secret)
+	if err != nil {
+		// secret not ready
+		return err
+	}
+	key.MarkSecretReady()
 
 	return nil
 }
 
+func (r *AccessKeyReconciler) ensureExternalKey(ctx context.Context, resource garagev1alpha1.AccessKey) (s3.AccessKey, error) {
+	externalKeyName := namespacedKeyName(resource.ObjectMeta)
+	newKey, err := r.accessKey.Create(ctx, externalKeyName)
+
+	if err != nil {
+		// TODO: queue only for known error
+		return s3.AccessKey{}, err
+	}
+
+	return newKey, nil
+}
+
+func (r *AccessKeyReconciler) ensureSecret(ctx context.Context, parent garagev1alpha1.AccessKey, secret string) error {
+	return nil
+}
+
 // namespacedKeyName returns a key name including the namespace to avoid conflicts.
-func namespacedKeyName(ac garagev1alpha1.AccessKey) string {
+func namespacedKeyName(meta v1.ObjectMeta) string {
 	// consider a random suffix:
-	return ac.ObjectMeta.Namespace + "-" + ac.ObjectMeta.Name
+	return meta.Namespace + "-" + meta.Name
 }
 
 // SetupWithManager sets up the controller with the Manager.
