@@ -18,7 +18,6 @@ package controller
 
 import (
 	"context"
-	"log/slog"
 
 	"k8s.io/apimachinery/pkg/api/equality"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -28,7 +27,6 @@ import (
 
 	garagev1alpha1 "github.com/bmarinov/garage-storage-controller/api/v1alpha1"
 	"github.com/bmarinov/garage-storage-controller/internal/s3"
-	logf "sigs.k8s.io/controller-runtime/pkg/log"
 )
 
 const (
@@ -36,7 +34,7 @@ const (
 )
 
 // TODO: proper naming
-type S3Client interface {
+type BucketClient interface {
 	Create(ctx context.Context, globalAlias string) (s3.Bucket, error)
 	Get(ctx context.Context, globalAlias string) (s3.Bucket, error)
 	Update(ctx context.Context, id string, quotas s3.Quotas) error
@@ -46,14 +44,14 @@ type S3Client interface {
 type BucketReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
-	s3     S3Client
+	bucket BucketClient
 }
 
-func New(apiClient client.Client, scheme *runtime.Scheme, s3Client S3Client) *BucketReconciler {
+func New(apiClient client.Client, scheme *runtime.Scheme, s3Client BucketClient) *BucketReconciler {
 	return &BucketReconciler{
 		Client: apiClient,
 		Scheme: scheme,
-		s3:     s3Client,
+		bucket: s3Client,
 	}
 }
 
@@ -62,8 +60,6 @@ func New(apiClient client.Client, scheme *runtime.Scheme, s3Client S3Client) *Bu
 // +kubebuilder:rbac:groups=garage.getclustered.net,resources=buckets/finalizers,verbs=update
 
 func (r *BucketReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	_ = logf.FromContext(ctx)
-
 	bucket := garagev1alpha1.Bucket{}
 
 	err := r.Get(ctx, req.NamespacedName, &bucket)
@@ -72,7 +68,6 @@ func (r *BucketReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 			return ctrl.Result{}, nil
 		}
 
-		slog.Error("get Bucket", "err", err)
 		return ctrl.Result{}, err
 	}
 

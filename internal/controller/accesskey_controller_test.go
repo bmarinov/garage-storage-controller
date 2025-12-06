@@ -128,7 +128,7 @@ var _ = Describe("AccessKey Controller", func() {
 				g.Expect(accessKey.Status.ID).To(Equal(expected))
 			}).Should(Succeed())
 		})
-		FIt("creates kubernetes secret with data from external access key", func() {
+		It("creates kubernetes secret with data from external access key", func() {
 			sut, extAPI := setup()
 			_, _ = sut.Reconcile(ctx, reconcile.Request{
 				NamespacedName: typeNamespacedName,
