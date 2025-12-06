@@ -25,12 +25,12 @@ import (
 	. "github.com/onsi/gomega"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	"github.com/bmarinov/garage-storage-controller/api/v1alpha1"
 	garagev1alpha1 "github.com/bmarinov/garage-storage-controller/api/v1alpha1"
 	"github.com/bmarinov/garage-storage-controller/internal/s3"
 )
@@ -128,7 +128,7 @@ var _ = Describe("AccessKey Controller", func() {
 				g.Expect(accessKey.Status.ID).To(Equal(expected))
 			}).Should(Succeed())
 		})
-		It("creates kubernetes secret with data from external access key", func() {
+		FIt("creates kubernetes secret with data from external access key", func() {
 			sut, extAPI := setup()
 			_, _ = sut.Reconcile(ctx, reconcile.Request{
 				NamespacedName: typeNamespacedName,
@@ -138,7 +138,7 @@ var _ = Describe("AccessKey Controller", func() {
 
 			By("creating a kubernetes secret resource in the same namespace")
 			Eventually(func(g Gomega) {
-				var accessKey v1alpha1.AccessKey
+				var accessKey garagev1alpha1.AccessKey
 				err := k8sClient.Get(ctx, typeNamespacedName, &accessKey)
 				Expect(err).ToNot(HaveOccurred())
 
@@ -149,7 +149,7 @@ var _ = Describe("AccessKey Controller", func() {
 
 			By("storing access credentials in kubernetes secret")
 			Eventually(func(g Gomega) {
-				var accessKey v1alpha1.AccessKey
+				var accessKey garagev1alpha1.AccessKey
 				_ = k8sClient.Get(ctx, typeNamespacedName, &accessKey)
 
 				var secretRes corev1.Secret
@@ -158,6 +158,17 @@ var _ = Describe("AccessKey Controller", func() {
 				g.Expect(string(secretRes.Data["accessKeyId"])).To(Equal(accessKey.Status.ID))
 				g.Expect(string(secretRes.Data["secretAccessKey"])).To(Equal(extAPI.keys[0].Secret))
 			}).Should(Succeed())
+			By("setting top-level Ready when access key and secret are ready")
+			var accessKey garagev1alpha1.AccessKey
+			_ = k8sClient.Get(ctx, typeNamespacedName, &accessKey)
+			var secretRes corev1.Secret
+			_ = k8sClient.Get(ctx, types.NamespacedName{Namespace: accessKey.Namespace, Name: accessKey.Spec.SecretName}, &secretRes)
+			topReady := meta.FindStatusCondition(accessKey.Status.Conditions, Ready)
+			accessKeyReady := meta.FindStatusCondition(accessKey.Status.Conditions, AccessKeyReady)
+			secretReady := meta.FindStatusCondition(accessKey.Status.Conditions, KeySecretReady)
+			Expect(accessKeyReady.Status).To(Equal(metav1.ConditionTrue))
+			Expect(secretReady.Status).To(Equal(metav1.ConditionTrue))
+			Expect(topReady.Status).To(Equal(metav1.ConditionTrue))
 		})
 
 		// It("should reconcile with existing external access key", func() {

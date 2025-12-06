@@ -73,8 +73,6 @@ func (b *Bucket) MarkBucketReady() {
 }
 
 func (b *Bucket) updateReadyCondition() {
-	// Top-level ready -> Bucket Ready -> Key Ready
-
 	bucketCond := meta.FindStatusCondition(b.Object.Status.Conditions, BucketReady)
 
 	readyStat := metav1.ConditionFalse
@@ -96,5 +94,8 @@ func (b *Bucket) updateReadyCondition() {
 		ObservedGeneration: b.Object.GetGeneration(),
 	}
 	meta.SetStatusCondition(&b.Object.Status.Conditions, readyCondition)
-	b.Object.Status.ObservedGeneration = b.Object.GetGeneration()
+
+	if readyCondition.Status == metav1.ConditionTrue {
+		b.Object.Status.ObservedGeneration = b.Object.GetGeneration()
+	}
 }

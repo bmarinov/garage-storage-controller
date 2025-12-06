@@ -50,7 +50,30 @@ func (k *AccessKey) AccessKeyCondition() metav1.Condition {
 }
 
 func (k *AccessKey) updateStatus() {
-	// accessKeyCond := meta.FindStatusCondition(k.Object.Status.Conditions, AccessKeyReady)
+	readyStat := metav1.ConditionFalse
+	readyReason := "WaitingForResources"
+	readyMessage := "Waiting for conditions " + AccessKeyReady + " and " + KeySecretReady
 
-	k.Object.Status.ObservedGeneration = k.Object.GetGeneration()
+	accessKeyCond := k.AccessKeyCondition()
+	secretCond := meta.FindStatusCondition(k.Object.Status.Conditions, KeySecretReady)
+	if accessKeyCond.Status == metav1.ConditionTrue &&
+		secretCond.Status == metav1.ConditionTrue {
+		readyStat = metav1.ConditionTrue
+		readyReason = "ResourcesReady"
+		readyMessage = "All conditions met"
+	}
+
+	readyCondition := metav1.Condition{
+		Type:               Ready,
+		Status:             readyStat,
+		Reason:             readyReason,
+		Message:            readyMessage,
+		LastTransitionTime: metav1.Now(),
+		ObservedGeneration: k.Object.GetGeneration(),
+	}
+	meta.SetStatusCondition(&k.Object.Status.Conditions, readyCondition)
+
+	if readyCondition.Status == metav1.ConditionTrue {
+		k.Object.Status.ObservedGeneration = k.Object.GetGeneration()
+	}
 }
