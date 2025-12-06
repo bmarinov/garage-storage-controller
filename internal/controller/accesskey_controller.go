@@ -18,7 +18,9 @@ package controller
 
 import (
 	"context"
+	"fmt"
 
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/equality"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -26,6 +28,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
 	garagev1alpha1 "github.com/bmarinov/garage-storage-controller/api/v1alpha1"
@@ -120,15 +123,43 @@ func (r *AccessKeyReconciler) ensureExternalKey(ctx context.Context, resource ga
 	newKey, err := r.accessKey.Create(ctx, externalKeyName)
 
 	if err != nil {
-		// TODO: queue only for known error
+		// TODO: queue only for known error eg exists+code
+		// else:
 		return s3.AccessKey{}, err
 	}
 
 	return newKey, nil
 }
 
-func (r *AccessKeyReconciler) ensureSecret(ctx context.Context, parent garagev1alpha1.AccessKey, secret string) error {
-	return nil
+func (r *AccessKeyReconciler) ensureSecret(ctx context.Context,
+	parent garagev1alpha1.AccessKey,
+	secret string) error {
+	secretRes := corev1.Secret{
+		ObjectMeta: v1.ObjectMeta{
+			Name:      parent.Spec.SecretName,
+			Namespace: parent.Namespace,
+			Labels: map[string]string{
+				"garage.getclustered.net/owned-by": parent.Name,
+			},
+		},
+		Type: corev1.SecretTypeOpaque,
+		Data: map[string][]byte{},
+	}
+
+	err := controllerutil.SetOwnerReference(&parent, &secretRes, r.Scheme)
+	if err != nil {
+		return fmt.Errorf("setting owner reference on secret: %w", err)
+	}
+
+	_, err = controllerutil.CreateOrUpdate(ctx, r.Client, &secretRes, func() error {
+		secretRes.Data = map[string][]byte{
+			"accessKeyId":     []byte(parent.Status.ID),
+			"secretAccessKey": []byte(secret),
+		}
+		return nil
+	})
+
+	return err
 }
 
 // namespacedKeyName returns a key name including the namespace to avoid conflicts.
