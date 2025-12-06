@@ -18,3 +18,9 @@ type Quotas struct {
 	MaxObjects int64
 	MaxSize    int64
 }
+
+type AccessKey struct {
+	ID     string
+	Secret string
+	Name   string
+}

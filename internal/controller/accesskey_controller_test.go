@@ -18,6 +18,7 @@ package controller
 
 import (
 	"context"
+	"fmt"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -28,6 +29,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	garagev1alpha1 "github.com/bmarinov/garage-storage-controller/api/v1alpha1"
+	"github.com/bmarinov/garage-storage-controller/internal/s3"
 )
 
 var _ = Describe("AccessKey Controller", func() {
@@ -51,9 +53,16 @@ var _ = Describe("AccessKey Controller", func() {
 						Name:      resourceName,
 						Namespace: "default",
 					},
+					Spec: garagev1alpha1.AccessKeySpec{
+						SecretName:   "some-ns-secret",
+						NeverExpires: true,
+					},
 				}
 				Expect(k8sClient.Create(ctx, resource)).To(Succeed())
+			} else if err != nil {
+				panic(err)
 			}
+
 		})
 
 		AfterEach(func() {
@@ -64,17 +73,45 @@ var _ = Describe("AccessKey Controller", func() {
 			By("Cleanup the specific resource instance AccessKey")
 			Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
 		})
-		It("should successfully reconcile the resource", func() {
-			By("Reconciling the created resource")
-			controllerReconciler := &AccessKeyReconciler{
-				Client: k8sClient,
-				Scheme: k8sClient.Scheme(),
-			}
+		FIt("should successfully reconcile the resource", func() {
+			By("reconciling the created resource")
+
+			akm := newAccessMgrFake()
+			controllerReconciler := NewAccessKeyReconciler(k8sClient, k8sClient.Scheme(), akm)
 
 			_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
 				NamespacedName: typeNamespacedName,
 			})
 			Expect(err).NotTo(HaveOccurred())
+			By("creating external access key")
+
+			Expect(akm.keys).To(HaveLen(1))
+			externalKey := akm.keys[0]
+
+			conventionalName := fmt.Sprintf("%s-%s", accesskey.Namespace, accesskey.Name)
+			Expect(externalKey).To(Equal(conventionalName))
 		})
 	})
 })
+
+type accessMgrFake struct {
+	keys []string
+}
+
+func newAccessMgrFake() *accessMgrFake {
+	return &accessMgrFake{}
+}
+
+// Create implements AccessKeyManager.
+func (a *accessMgrFake) Create(ctx context.Context, keyName string) (s3.AccessKey, error) {
+	for _, v := range a.keys {
+		if v == keyName {
+			return s3.AccessKey{}, fmt.Errorf("key %s exists", keyName)
+		}
+	}
+
+	a.keys = append(a.keys, keyName)
+	return s3.AccessKey{}, nil
+}
+
+var _ AccessKeyManager = &accessMgrFake{}

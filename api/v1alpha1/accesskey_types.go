@@ -31,7 +31,8 @@ type AccessKeySpec struct {
 	// Expiration time.Time
 
 	// The name of the secret holding the credentials.
-	// +required
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="Value is immutable"
 	SecretName string `json:"secretName"`
 }
 
@@ -42,6 +43,13 @@ type AccessKeyStatus struct {
 	// +listMapKey=type
 	// +optional
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
+
+	// +optional
+	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
+
+	// The external Access Key identifier.
+	// +optional
+	ID string `json:"id,omitempty"`
 }
 
 // +kubebuilder:object:root=true
