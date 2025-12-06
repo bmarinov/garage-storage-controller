@@ -33,7 +33,6 @@ const (
 	bucketControllerName = "garage-storage-controller"
 )
 
-// TODO: proper naming
 type BucketClient interface {
 	Create(ctx context.Context, globalAlias string) (s3.Bucket, error)
 	Get(ctx context.Context, globalAlias string) (s3.Bucket, error)
