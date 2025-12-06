@@ -1,0 +1,97 @@
+package controller
+
+import (
+	"fmt"
+
+	garagev1alpha1 "github.com/bmarinov/garage-storage-controller/api/v1alpha1"
+	"k8s.io/apimachinery/pkg/api/meta"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+)
+
+type AccessKey struct {
+	Object *garagev1alpha1.AccessKey
+}
+
+const (
+	AccessKeyReady string = "AccessKeyReady"
+	KeySecretReady string = "KeySecretReady"
+)
+
+func (k *AccessKey) InitializeConditions() {
+	conditions := []string{Ready, AccessKeyReady, KeySecretReady}
+	initResourceConditions(conditions, &k.Object.Status.Conditions)
+}
+
+func (k *AccessKey) MarkAccessKeyReady() {
+	cond := metav1.Condition{
+		Type:               AccessKeyReady,
+		Status:             metav1.ConditionTrue,
+		LastTransitionTime: metav1.Now(),
+		ObservedGeneration: k.Object.GetGeneration(),
+		Reason:             "AccessKeyReady",
+		Message:            "External access key is ready",
+	}
+	meta.SetStatusCondition(&k.Object.Status.Conditions, cond)
+}
+
+func (k *AccessKey) MarkNotReady(condType string,
+	reason,
+	message string,
+	args ...any) {
+	cond := metav1.Condition{
+		Type:               condType,
+		Status:             metav1.ConditionFalse,
+		LastTransitionTime: metav1.Now(),
+		Reason:             reason,
+		Message:            fmt.Sprintf(message, args...),
+		ObservedGeneration: k.Object.Generation,
+	}
+
+	meta.SetStatusCondition(&k.Object.Status.Conditions, cond)
+}
+
+func (k *AccessKey) MarkSecretReady() {
+	cond := metav1.Condition{
+		Type:               KeySecretReady,
+		Status:             metav1.ConditionTrue,
+		LastTransitionTime: metav1.Now(),
+		ObservedGeneration: k.Object.GetGeneration(),
+		Reason:             "SecretReady",
+		Message:            "Secret for external access key is ready",
+	}
+	meta.SetStatusCondition(&k.Object.Status.Conditions, cond)
+}
+
+func (k *AccessKey) AccessKeyCondition() metav1.Condition {
+	cond := meta.FindStatusCondition(k.Object.Status.Conditions, AccessKeyReady)
+	return *cond
+}
+
+func (k *AccessKey) updateStatus() {
+	readyStat := metav1.ConditionFalse
+	readyReason := "WaitingForResources"
+	readyMessage := "Waiting for conditions " + AccessKeyReady + " and " + KeySecretReady
+
+	accessKeyCond := k.AccessKeyCondition()
+	secretCond := meta.FindStatusCondition(k.Object.Status.Conditions, KeySecretReady)
+	if accessKeyCond.Status == metav1.ConditionTrue &&
+		secretCond.Status == metav1.ConditionTrue {
+		readyStat = metav1.ConditionTrue
+		readyReason = "ResourcesReady"
+		readyMessage = "All conditions met"
+	}
+
+	readyCondition := metav1.Condition{
+		Type:               Ready,
+		Status:             readyStat,
+		Reason:             readyReason,
+		Message:            readyMessage,
+		LastTransitionTime: metav1.Now(),
+		ObservedGeneration: k.Object.GetGeneration(),
+	}
+	meta.SetStatusCondition(&k.Object.Status.Conditions, readyCondition)
+
+	if readyCondition.Status == metav1.ConditionTrue {
+		k.Object.Status.ObservedGeneration = k.Object.GetGeneration()
+	}
+}

@@ -37,6 +37,7 @@ import (
 
 	garagev1alpha1 "github.com/bmarinov/garage-storage-controller/api/v1alpha1"
 	"github.com/bmarinov/garage-storage-controller/internal/controller"
+	"github.com/bmarinov/garage-storage-controller/internal/garage"
 	// +kubebuilder:scaffold:imports
 )
 
@@ -178,11 +179,19 @@ func main() {
 		os.Exit(1)
 	}
 
-	if err := (&controller.BucketReconciler{
+	if err := (controller.New(
+		mgr.GetClient(),
+		mgr.GetScheme(),
+		&garage.AdminClient{},
+	)).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "Bucket")
+		os.Exit(1)
+	}
+	if err := (&controller.AccessKeyReconciler{
 		Client: mgr.GetClient(),
 		Scheme: mgr.GetScheme(),
 	}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "Bucket")
+		setupLog.Error(err, "unable to create controller", "controller", "AccessKey")
 		os.Exit(1)
 	}
 	// +kubebuilder:scaffold:builder

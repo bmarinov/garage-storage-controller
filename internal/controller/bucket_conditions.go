@@ -8,35 +8,36 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
+// TODO: a wrapper on bucket might be overkill here: no dependent objects
 type Bucket struct {
 	Object *garagev1alpha1.Bucket
 }
 
-type BucketConditionType string
+// Ready is the top-level ready condition for a resource.
+const Ready string = "Ready"
 
 const (
-	ConditionReady       BucketConditionType = "Ready"
-	ConditionBucketReady BucketConditionType = "BucketReady"
+	BucketReady string = "BucketReady"
 )
 
 func (b *Bucket) InitializeConditions() {
-	if b.Object.Status.Conditions == nil {
-		b.Object.Status.Conditions = []metav1.Condition{}
-	}
+	conditions := []string{Ready, BucketReady}
+	initResourceConditions(conditions, &b.Object.Status.Conditions)
+}
 
+func initResourceConditions(allConditions []string, conditions *[]metav1.Condition) {
 	now := metav1.Now()
 
-	conditions := []BucketConditionType{ConditionReady, ConditionBucketReady}
-	for _, cond := range conditions {
-		if meta.FindStatusCondition(b.Object.Status.Conditions, string(cond)) == nil {
+	for _, cond := range allConditions {
+		if meta.FindStatusCondition(*conditions, cond) == nil {
 			cond := metav1.Condition{
-				Type:               string(cond),
+				Type:               cond,
 				Status:             metav1.ConditionUnknown,
 				LastTransitionTime: now,
 				Reason:             "Pending",
 				Message:            "Condition unknown",
 			}
-			meta.SetStatusCondition(&b.Object.Status.Conditions, cond)
+			meta.SetStatusCondition(conditions, cond)
 		}
 	}
 }
@@ -46,7 +47,7 @@ func (b *Bucket) MarkBucketNotReady(
 	message string,
 	args ...any) {
 	cond := metav1.Condition{
-		Type:               string(ConditionBucketReady),
+		Type:               BucketReady,
 		Status:             metav1.ConditionFalse,
 		LastTransitionTime: metav1.Now(),
 		Reason:             reason,
@@ -60,7 +61,7 @@ func (b *Bucket) MarkBucketNotReady(
 
 func (b *Bucket) MarkBucketReady() {
 	cond := metav1.Condition{
-		Type:               string(ConditionBucketReady),
+		Type:               BucketReady,
 		Status:             metav1.ConditionTrue,
 		LastTransitionTime: metav1.Now(),
 		ObservedGeneration: b.Object.Generation,
@@ -72,13 +73,11 @@ func (b *Bucket) MarkBucketReady() {
 }
 
 func (b *Bucket) updateReadyCondition() {
-	// Top-level ready -> Bucket Ready -> Key Ready
-
-	bucketCond := meta.FindStatusCondition(b.Object.Status.Conditions, string(ConditionBucketReady))
+	bucketCond := meta.FindStatusCondition(b.Object.Status.Conditions, BucketReady)
 
 	readyStat := metav1.ConditionFalse
 	readyReason := "WaitingForBucket"
-	readyMessage := "Waiting for " + string(ConditionBucketReady)
+	readyMessage := "Waiting for " + BucketReady
 
 	if bucketCond != nil && bucketCond.Status == metav1.ConditionTrue {
 		readyStat = metav1.ConditionTrue
@@ -87,7 +86,7 @@ func (b *Bucket) updateReadyCondition() {
 	}
 
 	readyCondition := metav1.Condition{
-		Type:               string(ConditionReady),
+		Type:               Ready,
 		Status:             readyStat,
 		Reason:             readyReason,
 		Message:            readyMessage,
@@ -95,5 +94,8 @@ func (b *Bucket) updateReadyCondition() {
 		ObservedGeneration: b.Object.GetGeneration(),
 	}
 	meta.SetStatusCondition(&b.Object.Status.Conditions, readyCondition)
-	b.Object.Status.ObservedGeneration = b.Object.GetGeneration()
+
+	if readyCondition.Status == metav1.ConditionTrue {
+		b.Object.Status.ObservedGeneration = b.Object.GetGeneration()
+	}
 }

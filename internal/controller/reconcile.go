@@ -11,10 +11,10 @@ import (
 
 func (r *BucketReconciler) reconcileBucket(ctx context.Context, bucket *Bucket) error {
 	alias := bucket.Object.Spec.Name
-	s3Bucket, err := r.s3.Get(ctx, alias)
+	s3Bucket, err := r.bucket.Get(ctx, alias)
 	if err != nil {
 		if errors.Is(err, s3.ErrBucketNotFound) {
-			s3Bucket, err = r.s3.Create(ctx, alias)
+			s3Bucket, err = r.bucket.Create(ctx, alias)
 			if err != nil {
 				bucket.MarkBucketNotReady("CreateFailed", "Failed to create bucket '%s': %v", alias, err)
 				return fmt.Errorf("create new bucket: %w", err)
@@ -32,7 +32,7 @@ func (r *BucketReconciler) reconcileBucket(ctx context.Context, bucket *Bucket) 
 	diff := compareSpec(s3Bucket, bucket.Object.Spec)
 
 	if diff {
-		err := r.s3.Update(ctx, s3Bucket.ID, s3.Quotas{
+		err := r.bucket.Update(ctx, s3Bucket.ID, s3.Quotas{
 			MaxObjects: bucket.Object.Spec.MaxObjects,
 			MaxSize:    bucket.Object.Spec.MaxSize,
 		})

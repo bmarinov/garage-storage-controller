@@ -78,7 +78,7 @@ var _ = Describe("Bucket Controller", func() {
 			controllerReconciler := &BucketReconciler{
 				Client: k8sClient,
 				Scheme: k8sClient.Scheme(),
-				s3:     s3API,
+				bucket: s3API,
 			}
 
 			existing := s3.Bucket{
@@ -101,7 +101,7 @@ var _ = Describe("Bucket Controller", func() {
 				_ = g.Expect((bucket.Status.Conditions)).To(ContainElement(SatisfyAll(
 					WithTransform(
 						func(c metav1.Condition) string { return c.Type },
-						Equal(string(ConditionBucketReady)),
+						Equal(BucketReady),
 					),
 					WithTransform(
 						func(c metav1.Condition) metav1.ConditionStatus { return c.Status },
@@ -113,7 +113,7 @@ var _ = Describe("Bucket Controller", func() {
 				_ = g.Expect((bucket.Status.Conditions)).To(ContainElement(SatisfyAll(
 					WithTransform(
 						func(c metav1.Condition) string { return c.Type },
-						Equal(string(ConditionReady)),
+						Equal(Ready),
 					),
 					WithTransform(
 						func(c metav1.Condition) metav1.ConditionStatus { return c.Status },
@@ -154,7 +154,7 @@ var _ = Describe("Bucket Controller", func() {
 			controllerReconciler := &BucketReconciler{
 				Client: k8sClient,
 				Scheme: k8sClient.Scheme(),
-				s3:     s3API,
+				bucket: s3API,
 			}
 
 			// act
@@ -189,7 +189,7 @@ var _ = Describe("Bucket Controller", func() {
 			controllerReconciler := &BucketReconciler{
 				Client: k8sClient,
 				Scheme: k8sClient.Scheme(),
-				s3:     s3Fake,
+				bucket: s3Fake,
 			}
 			_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{NamespacedName: key})
 			Expect(err).ShouldNot(HaveOccurred())
@@ -203,7 +203,7 @@ var _ = Describe("Bucket Controller", func() {
 					SatisfyAll(
 						WithTransform(
 							func(c metav1.Condition) string { return c.Type },
-							Equal(string(ConditionReady)),
+							Equal(Ready),
 						),
 						WithTransform(
 							func(c metav1.Condition) metav1.ConditionStatus { return c.Status },
@@ -273,4 +273,4 @@ func (s *s3APIFake) Get(ctx context.Context, globalAlias string) (s3.Bucket, err
 	return s3.Bucket{}, s3.ErrBucketNotFound
 }
 
-var _ S3Client = &s3APIFake{}
+var _ BucketClient = &s3APIFake{}

@@ -18,7 +18,6 @@ package controller
 
 import (
 	"context"
-	"log/slog"
 
 	"k8s.io/apimachinery/pkg/api/equality"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -28,14 +27,13 @@ import (
 
 	garagev1alpha1 "github.com/bmarinov/garage-storage-controller/api/v1alpha1"
 	"github.com/bmarinov/garage-storage-controller/internal/s3"
-	logf "sigs.k8s.io/controller-runtime/pkg/log"
 )
 
 const (
 	bucketControllerName = "garage-storage-controller"
 )
 
-type S3Client interface {
+type BucketClient interface {
 	Create(ctx context.Context, globalAlias string) (s3.Bucket, error)
 	Get(ctx context.Context, globalAlias string) (s3.Bucket, error)
 	Update(ctx context.Context, id string, quotas s3.Quotas) error
@@ -45,7 +43,15 @@ type S3Client interface {
 type BucketReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
-	s3     S3Client
+	bucket BucketClient
+}
+
+func New(apiClient client.Client, scheme *runtime.Scheme, s3Client BucketClient) *BucketReconciler {
+	return &BucketReconciler{
+		Client: apiClient,
+		Scheme: scheme,
+		bucket: s3Client,
+	}
 }
 
 // +kubebuilder:rbac:groups=garage.getclustered.net,resources=buckets,verbs=get;list;watch;create;update;patch;delete
@@ -53,8 +59,6 @@ type BucketReconciler struct {
 // +kubebuilder:rbac:groups=garage.getclustered.net,resources=buckets/finalizers,verbs=update
 
 func (r *BucketReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	_ = logf.FromContext(ctx)
-
 	bucket := garagev1alpha1.Bucket{}
 
 	err := r.Get(ctx, req.NamespacedName, &bucket)
@@ -63,16 +67,15 @@ func (r *BucketReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 			return ctrl.Result{}, nil
 		}
 
-		slog.Error("get Bucket", "err", err)
 		return ctrl.Result{}, err
 	}
 
 	orig := bucket.Status.DeepCopy()
 
-	bucketMgr := Bucket{Object: &bucket}
-	bucketMgr.InitializeConditions()
+	b := Bucket{Object: &bucket}
+	b.InitializeConditions()
 
-	err = r.reconcileBucket(ctx, &bucketMgr)
+	err = r.reconcileBucket(ctx, &b)
 
 	if err != nil {
 		return ctrl.Result{}, err
