@@ -101,7 +101,8 @@ func (r *AccessKeyReconciler) reconcileAccessKey(ctx context.Context, key *Acces
 
 	externalKey, err := r.ensureExternalKey(ctx, *key.Object)
 	if err != nil {
-		// set status to fail
+		key.MarkNotReady(AccessKeyReady, "AccessKeyUnknown", "Failed to verify external access key: %v", err)
+
 		return err
 	}
 
@@ -110,7 +111,7 @@ func (r *AccessKeyReconciler) reconcileAccessKey(ctx context.Context, key *Acces
 
 	err = r.ensureSecret(ctx, *key.Object, externalKey.Secret)
 	if err != nil {
-		// secret not ready
+		key.MarkNotReady(KeySecretReady, "SecretSetupFailed", "Failed to set up secret for credentials: %v", err)
 		return err
 	}
 	key.MarkSecretReady()

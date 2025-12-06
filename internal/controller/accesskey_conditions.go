@@ -1,6 +1,8 @@
 package controller
 
 import (
+	"fmt"
+
 	garagev1alpha1 "github.com/bmarinov/garage-storage-controller/api/v1alpha1"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -29,6 +31,22 @@ func (k *AccessKey) MarkAccessKeyReady() {
 		Reason:             "AccessKeyReady",
 		Message:            "External access key is ready",
 	}
+	meta.SetStatusCondition(&k.Object.Status.Conditions, cond)
+}
+
+func (k *AccessKey) MarkNotReady(condType string,
+	reason,
+	message string,
+	args ...any) {
+	cond := metav1.Condition{
+		Type:               condType,
+		Status:             metav1.ConditionFalse,
+		LastTransitionTime: metav1.Now(),
+		Reason:             reason,
+		Message:            fmt.Sprintf(message, args...),
+		ObservedGeneration: k.Object.Generation,
+	}
+
 	meta.SetStatusCondition(&k.Object.Status.Conditions, cond)
 }
 
