@@ -1,0 +1,19 @@
+# Adds namespace to all resources.
+namespace: garage-storage-controller-system
+namePrefix: garage-storage-controller-
+
+#labels:
+#- includeSelectors: true
+#  pairs:
+#    someName: someValue
+
+resources:
+- ../crd
+- ../rbac
+- ../manager
+- metrics_service.yaml
+
+patches:
+- path: manager_metrics_patch.yaml
+  target:
+    kind: Deployment
