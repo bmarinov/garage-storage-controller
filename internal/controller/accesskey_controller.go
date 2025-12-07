@@ -52,7 +52,7 @@ func NewAccessKeyReconciler(c client.Client, s *runtime.Scheme, keyMgr AccessKey
 
 type AccessKeyManager interface {
 	Create(ctx context.Context, keyName string) (s3.AccessKey, error)
-	Get(ctx context.Context, id string, search string)
+	Get(ctx context.Context, id string, search string) (s3.AccessKey, error)
 }
 
 // +kubebuilder:rbac:groups=garage.getclustered.net,resources=accesskeys,verbs=get;list;watch;create;update;patch;delete

@@ -191,7 +191,7 @@ func newAccessMgrFake() *accessMgrFake {
 }
 
 // Get implements AccessKeyManager.
-func (a *accessMgrFake) Get(ctx context.Context, id string, search string) {
+func (a *accessMgrFake) Get(ctx context.Context, id string, search string) (s3.AccessKey, error) {
 	panic("unimplemented")
 }
 

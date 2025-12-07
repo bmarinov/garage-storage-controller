@@ -179,18 +179,20 @@ func main() {
 		os.Exit(1)
 	}
 
-	if err := (controller.New(
+	garageClient := &garage.AdminClient{}
+	if err := controller.NewBucketReconciler(
 		mgr.GetClient(),
 		mgr.GetScheme(),
-		&garage.AdminClient{},
-	)).SetupWithManager(mgr); err != nil {
+		garageClient.BucketClient,
+	).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "Bucket")
 		os.Exit(1)
 	}
-	if err := (&controller.AccessKeyReconciler{
-		Client: mgr.GetClient(),
-		Scheme: mgr.GetScheme(),
-	}).SetupWithManager(mgr); err != nil {
+	if err := controller.NewAccessKeyReconciler(
+		mgr.GetClient(),
+		mgr.GetScheme(),
+		garageClient.AccessKeyClient,
+	).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "AccessKey")
 		os.Exit(1)
 	}

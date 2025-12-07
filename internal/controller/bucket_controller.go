@@ -46,7 +46,7 @@ type BucketReconciler struct {
 	bucket BucketClient
 }
 
-func New(apiClient client.Client, scheme *runtime.Scheme, s3Client BucketClient) *BucketReconciler {
+func NewBucketReconciler(apiClient client.Client, scheme *runtime.Scheme, s3Client BucketClient) *BucketReconciler {
 	return &BucketReconciler{
 		Client: apiClient,
 		Scheme: scheme,
