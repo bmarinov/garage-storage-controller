@@ -22,10 +22,35 @@ jobs:
       - name: Run unit tests
         run: make test
 
+  test-e2e:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Install the latest version of kind
+        run: |
+          curl -Lo ./kind https://kind.sigs.k8s.io/dl/latest/kind-linux-$(go env GOARCH)
+          chmod +x ./kind
+          sudo mv ./kind /usr/local/bin/kind
+
+      - name: Verify kind installation
+        run: kind version
+
+      - name: Run tests
+        run: |
+          go mod tidy
+          make test-e2e
+
   build:
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
-    needs: [test]
+    needs: [test, test-e2e]
     steps:
       - uses: actions/checkout@v4
       
