@@ -16,3 +16,5 @@
 !Makefile
 !PROJECT
 !hack/boilerplate.go.txt
+
+!**/integrationtests/garage.toml
