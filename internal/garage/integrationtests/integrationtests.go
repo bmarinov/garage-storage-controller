@@ -58,25 +58,35 @@ func NewGarageEnv() Environment {
 				FileMode:          0600,
 			},
 		),
+		testcontainers.WithLifecycleHooks(testcontainers.ContainerLifecycleHooks{
+			PostReadies: []testcontainers.ContainerHook{
+				func(ctx context.Context, container testcontainers.Container) error {
+					stdout, err := containerCmd(ctx, container, "/garage", "node", "id", "--quiet")
+					if err != nil {
+						return fmt.Errorf("obtaining node ID: %w", err)
+					}
+
+					nodeID := strings.Split(stdout, "@")[0]
+
+					stdout, err = containerCmd(ctx, container, "/garage", "layout", "assign", "-z", "testenv", "-c", "100M", nodeID)
+					if err != nil {
+						return fmt.Errorf("assign layout: %w output: %s", err, stdout)
+					}
+					stdout, err = containerCmd(ctx, container, "/garage", "layout", "apply", "--version", "1")
+					if err != nil {
+						return fmt.Errorf("apply layout: %w: %s", err, stdout)
+					}
+
+					return nil
+				},
+				func(ctx context.Context, ctr testcontainers.Container) error {
+					return clusterLayoutReady.WaitUntilReady(ctx, ctr)
+				},
+			},
+		}),
 	)
 	if err != nil {
 		panic(err)
-	}
-
-	stdout, err := containerCmd(ctx, container, "/garage", "node", "id", "--quiet")
-	if err != nil {
-		panic(err)
-	}
-
-	nodeID := strings.Split(stdout, "@")[0]
-
-	stdout, err = containerCmd(ctx, container, "/garage", "layout", "assign", "-z", "testenv", "-c", "100M", nodeID)
-	if err != nil {
-		panic(fmt.Errorf("assign layout: %w output: %s", err, stdout))
-	}
-	stdout, err = containerCmd(ctx, container, "/garage", "layout", "assign", "apply", "--version", "1")
-	if err != nil {
-		panic(fmt.Errorf("apply layout: %w: %s", err, stdout))
 	}
 
 	host, err := container.Host(ctx)
@@ -122,3 +132,9 @@ func containerCmd(ctx context.Context, c testcontainers.Container, cmdArgs ...st
 
 	return strings.TrimSpace(stdout.String()), nil
 }
+
+// clusterLayoutReady waits until layout is applied and cluster is operational.
+var clusterLayoutReady *wait.ExecStrategy = wait.
+	ForExec([]string{"/garage", "bucket", "list"}).
+	WithPollInterval(500 * time.Millisecond).
+	WithStartupTimeout(15 * time.Second)

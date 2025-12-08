@@ -26,7 +26,6 @@ func TestBucketClient(t *testing.T) {
 		sut := apiclient.BucketClient
 
 		t.Run("new bucket", func(t *testing.T) {
-			t.Skip()
 			bucket, err := sut.Create(t.Context(), "hello")
 			if err != nil {
 				t.Error(err)
@@ -37,7 +36,7 @@ func TestBucketClient(t *testing.T) {
 		})
 		t.Run("bucket exists", func(t *testing.T) {
 			bucketName := "foobaz3134"
-			bucket, err := sut.Create(t.Context(), bucketName)
+			_, err := sut.Create(t.Context(), bucketName)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -46,8 +45,8 @@ func TestBucketClient(t *testing.T) {
 			if err == nil {
 				t.Errorf("expected err for duplicate bucket, result: %v", duplicate)
 			}
-			if bucket.ID != duplicate.ID {
-				t.Errorf("ids should be eq, got: %s and %s", bucket.ID, duplicate.ID)
+			if duplicate.ID != "" {
+				t.Errorf("second result should not have valid values: %v", duplicate)
 			}
 		})
 	})
