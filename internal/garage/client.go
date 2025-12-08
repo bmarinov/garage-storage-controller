@@ -38,12 +38,33 @@ type adminAPIHttpClient struct {
 	baseURL    string
 }
 
-func (c *adminAPIHttpClient) doRequest(ctx context.Context, method string, path string, body io.Reader) (*http.Response, error) {
+func (c *adminAPIHttpClient) doRequest(ctx context.Context,
+	method string,
+	path string,
+	queryParams *url.Values,
+	body io.Reader,
+) (*http.Response, error) {
 	fullURL, err := url.JoinPath(c.baseURL, path)
 	if err != nil {
 		return nil, fmt.Errorf("constructing endpoint path: %w", err)
 	}
-	req, err := http.NewRequestWithContext(ctx, method, fullURL, body)
+
+	requestURL, err := url.Parse(fullURL)
+	if err != nil {
+		return nil, fmt.Errorf("invalid url: %w", err)
+	}
+
+	if queryParams != nil {
+		query := requestURL.Query()
+		for k, values := range *queryParams {
+			for _, v := range values {
+				query.Add(k, v)
+			}
+		}
+		requestURL.RawQuery = query.Encode()
+	}
+
+	req, err := http.NewRequestWithContext(ctx, method, requestURL.String(), body)
 	if err != nil {
 		return nil, err
 	}
@@ -81,12 +102,15 @@ func (b *BucketClient) Create(ctx context.Context, globalAlias string) (s3.Bucke
 		return s3.Bucket{}, err
 	}
 
-	resp, err := b.doRequest(ctx, http.MethodPost, "/CreateBucket", bytes.NewBuffer(payload))
+	resp, err := b.doRequest(ctx, http.MethodPost, "/CreateBucket", nil, bytes.NewBuffer(payload))
 	if err != nil {
 		return s3.Bucket{}, err
 	}
 
 	if resp.StatusCode != http.StatusOK {
+		if resp.StatusCode == http.StatusConflict {
+			return s3.Bucket{}, fmt.Errorf("%w: %w", s3.ErrBucketExists, err)
+		}
 		return s3.Bucket{}, fmt.Errorf("unexpected status code %d", resp.StatusCode)
 	}
 
@@ -106,10 +130,38 @@ func (b *BucketClient) Create(ctx context.Context, globalAlias string) (s3.Bucke
 }
 
 func (b *BucketClient) Get(ctx context.Context, globalAlias string) (s3.Bucket, error) {
+	params := url.Values{}
+	// params.Add("id", bucketID)
+	params.Add("globalAlias", globalAlias)
+
+	path := "GetBucketInfo"
+
+	resp, err := b.doRequest(ctx, http.MethodGet, path, &params, nil)
+	if err != nil {
+		return s3.Bucket{}, fmt.Errorf("retrieve bucket '%s': %w", globalAlias, err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		if resp.StatusCode == http.StatusNotFound {
+			return s3.Bucket{}, fmt.Errorf("%w: %w", s3.ErrBucketNotFound, err)
+		}
+		return s3.Bucket{}, fmt.Errorf("unexpected status code %d", resp.StatusCode)
+	}
+
+	var result Bucket
+	responseBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return s3.Bucket{}, fmt.Errorf("reading response: %w", err)
+	}
+	err = json.Unmarshal(responseBytes, &result)
+	if err != nil {
+		return s3.Bucket{}, nil
+	}
+
 	return s3.Bucket{
-		ID:            uuid.NewString(),
-		GlobalAliases: []string{globalAlias},
-	}, nil
+		ID:            result.ID,
+		GlobalAliases: result.GlobalAliases,
+		Quotas:        s3.Quotas(result.Quotas),
+	}, err
 }
 
 func (b *BucketClient) Update(ctx context.Context, id string, quotas s3.Quotas) error {
