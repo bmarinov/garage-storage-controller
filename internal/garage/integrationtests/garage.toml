@@ -9,7 +9,6 @@ compression_level = 1
 
 rpc_bind_addr = "[::]:3901"
 rpc_public_addr = "127.0.0.1:3901"
-rpc_secret = "47ea3ea5ff5d2dca67f4a2faff20b06f439594e3cdba6789a93b0d2f888dae64"
 
 [s3_api]
 s3_region = "garage"

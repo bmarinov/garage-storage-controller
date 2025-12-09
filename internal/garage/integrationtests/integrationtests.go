@@ -6,6 +6,7 @@ import (
 	"crypto/rand"
 	_ "embed"
 	"encoding/base64"
+	"encoding/hex"
 	"fmt"
 	"log"
 	"strings"
@@ -41,12 +42,13 @@ func (e *Environment) Terminate(ctx context.Context) {
 func NewGarageEnv() Environment {
 	ctx := context.TODO()
 
-	adminSecret := generateAdminToken()
+	adminSecret := generateSecret(base64.StdEncoding.EncodeToString)
 
 	container, err := testcontainers.Run(ctx, image,
 		testcontainers.WithEnv(
 			map[string]string{
 				"GARAGE_ADMIN_TOKEN": adminSecret,
+				"GARAGE_RPC_SECRET":  generateSecret(hex.EncodeToString),
 			},
 		),
 		testcontainers.WithExposedPorts(adminPort),
@@ -104,15 +106,15 @@ func NewGarageEnv() Environment {
 	}
 }
 
-// generateAdminToken returns a base64 encoded random string used as a secret.
-func generateAdminToken() string {
+// generateSecret returns a random string encoded with encodeFn.
+func generateSecret(encodeFn func([]byte) string) string {
 	b := make([]byte, 32)
 	_, err := rand.Read(b)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	encoded := base64.StdEncoding.EncodeToString(b)
+	encoded := encodeFn(b)
 	return encoded
 }
 
