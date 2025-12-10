@@ -2,14 +2,17 @@ package garage
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"net/url"
 	"reflect"
 	"testing"
 
 	"github.com/bmarinov/garage-storage-controller/internal/garage/integrationtests"
 	"github.com/bmarinov/garage-storage-controller/internal/s3"
+	"github.com/google/uuid"
 )
 
 var garageEnv integrationtests.Environment
@@ -148,6 +151,19 @@ func TestAccessKeyClient(t *testing.T) {
 			}
 			if first.ID == second.ID || first.Secret == second.Secret {
 				t.Error("keys should not share ID or secret")
+			}
+		})
+		t.Run("with naming convention", func(t *testing.T) {
+			uid := uuid.New()
+			hash := sha256.Sum256(uid[:])
+			suffix := hash[:4]
+			keyName := fmt.Sprintf("namespacefoo-keybar-%x", suffix)
+			key, err := sut.Create(t.Context(), keyName)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if key.Name != keyName {
+				t.Errorf("expected %s got %s", keyName, key.Name)
 			}
 		})
 	})

@@ -5,6 +5,8 @@ import "errors"
 var (
 	ErrBucketExists   = errors.New("bucket with alias already exists")
 	ErrBucketNotFound = errors.New("bucket not found")
+
+	ErrKeyNotFound = errors.New("access key not found")
 )
 
 type Bucket struct {

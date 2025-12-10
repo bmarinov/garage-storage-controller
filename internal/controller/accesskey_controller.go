@@ -147,7 +147,7 @@ func (r *AccessKeyReconciler) ensureSecret(ctx context.Context,
 		Data: map[string][]byte{},
 	}
 
-	err := controllerutil.SetOwnerReference(&parent, &secretRes, r.Scheme)
+	err := controllerutil.SetControllerReference(&parent, &secretRes, r.Scheme)
 	if err != nil {
 		return fmt.Errorf("setting owner reference on secret: %w", err)
 	}
