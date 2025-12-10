@@ -86,6 +86,9 @@ func main() {
 	opts.BindFlags(flag.CommandLine)
 	flag.Parse()
 
+	garageAPIToken := os.Getenv("GARAGE_API_TOKEN")
+	garageAPIEndpoint := os.Getenv("GARAGE_API_ENDPOINT")
+
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
 
 	// if the enable-http2 flag is false (the default), http/2 should be disabled
@@ -179,7 +182,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	garageClient := &garage.AdminClient{}
+	garageClient := garage.NewClient(garageAPIEndpoint, garageAPIToken)
 	if err := controller.NewBucketReconciler(
 		mgr.GetClient(),
 		mgr.GetScheme(),

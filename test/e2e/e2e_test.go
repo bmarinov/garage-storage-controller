@@ -53,6 +53,9 @@ const garageSecret = "garage-api-token"
 // garageSecretKey is the key in the secret pointing to the admin token.
 const garageSecretKey = "api-token"
 
+// garageNamespace contains the Garage deployment resources.
+const garageNamespace = "garage-system"
+
 var _ = Describe("Manager", Ordered, func() {
 	var controllerPodName string
 
@@ -61,8 +64,7 @@ var _ = Describe("Manager", Ordered, func() {
 	// and deploying the controller.
 	BeforeAll(func() {
 		By("creating garage namespace")
-		garageNs := "garage"
-		cmd := exec.Command("kubectl", "create", "ns", garageNs)
+		cmd := exec.Command("kubectl", "create", "ns", garageNamespace)
 		_, err := utils.Run(cmd)
 		Expect(err).NotTo(HaveOccurred())
 
@@ -80,7 +82,7 @@ var _ = Describe("Manager", Ordered, func() {
 		By("creating admin API secret in controller and garage namespaces")
 		garageAdminToken := integrationtests.GenerateRandomString(base64.StdEncoding.EncodeToString)
 
-		for _, ns := range []string{garageNs, namespace} {
+		for _, ns := range []string{garageNamespace, namespace} {
 			cmd = exec.Command("kubectl", "create", "secret", "generic", garageSecret,
 				fmt.Sprintf("--from-literal=%s=%s", garageSecretKey, garageAdminToken),
 				"--namespace", ns,

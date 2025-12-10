@@ -11,6 +11,11 @@ patches:
     - op: add
       path: /spec/template/spec/containers/0/env/-
       value:
+        name: GARAGE_API_ENDPOINT
+        value: http://garage.garage-system.svc.cluster.local:3903
+    - op: add
+      path: /spec/template/spec/containers/0/env/-
+      value:
         name: GARAGE_API_TOKEN
         valueFrom:
           secretKeyRef:
