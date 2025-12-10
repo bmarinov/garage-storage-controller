@@ -6,3 +6,18 @@ images:
 - name: controller
   newName: garage.getclustered.net/garage-storage-controller
   newTag: v0.0.1
+patches:
+- patch: |-
+    - op: add
+      path: /spec/template/spec/containers/0/env/-
+      value:
+        name: GARAGE_API_TOKEN
+        valueFrom:
+          secretKeyRef:
+            name: garage-api-token
+            key: api-token
+  target:
+    group: apps
+    kind: Deployment
+    name: controller-manager
+    version: v1

@@ -43,6 +43,9 @@ var (
 	// projectImage is the name of the image which will be build and loaded
 	// with the code source changes to be tested.
 	projectImage = "garage.getclustered.net/garage-storage-controller:v0.0.1"
+
+	// garageImage is the image of the Garage backend pod.
+	garageImage = "docker.io/dxflrs/garage:v2.1.0"
 )
 
 // TestE2E runs the end-to-end (e2e) test suite for the project. These tests execute in an isolated,
@@ -66,6 +69,9 @@ var _ = BeforeSuite(func() {
 	By("loading the manager(Operator) image on Kind")
 	err = utils.LoadImageToKindClusterWithName(projectImage)
 	ExpectWithOffset(1, err).NotTo(HaveOccurred(), "Failed to load the manager(Operator) image into Kind")
+
+	err = utils.LoadImageToKindClusterWithName(garageImage)
+	Expect(err).To(Succeed())
 
 	// The tests-e2e are intended to run on a temporary cluster that is created and destroyed for testing.
 	// To prevent errors when tests run in environments with CertManager already installed,

@@ -27,7 +27,7 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/utils/pointer"
+	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -177,8 +177,8 @@ var _ = Describe("AccessKey Controller", func() {
 				Kind:               accessKey.Kind,
 				Name:               accessKey.Name,
 				UID:                accessKey.UID,
-				Controller:         pointer.Bool(true),
-				BlockOwnerDeletion: pointer.Bool(true),
+				Controller:         ptr.To(true),
+				BlockOwnerDeletion: ptr.To(true),
 			}
 			Expect(secretRes.OwnerReferences).To(HaveLen(1))
 			Expect(secretRes.OwnerReferences[0]).To(Equal(expectedRef))

@@ -20,6 +20,7 @@ limitations under the License.
 package e2e
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -30,6 +31,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
+	"github.com/bmarinov/garage-storage-controller/internal/garage/integrationtests"
 	"github.com/bmarinov/garage-storage-controller/test/utils"
 )
 
@@ -45,6 +47,12 @@ const metricsServiceName = "garage-storage-controller-controller-manager-metrics
 // metricsRoleBindingName is the name of the RBAC that will be created to allow get the metrics data
 const metricsRoleBindingName = "garage-storage-controller-metrics-binding"
 
+// garageSecret contains the admin token for the Garage API, needed in the controller.
+const garageSecret = "garage-api-token"
+
+// garageSecretKey is the key in the secret pointing to the admin token.
+const garageSecretKey = "api-token"
+
 var _ = Describe("Manager", Ordered, func() {
 	var controllerPodName string
 
@@ -52,9 +60,15 @@ var _ = Describe("Manager", Ordered, func() {
 	// enforce the restricted security policy to the namespace, installing CRDs,
 	// and deploying the controller.
 	BeforeAll(func() {
-		By("creating manager namespace")
-		cmd := exec.Command("kubectl", "create", "ns", namespace)
+		By("creating garage namespace")
+		garageNs := "garage"
+		cmd := exec.Command("kubectl", "create", "ns", garageNs)
 		_, err := utils.Run(cmd)
+		Expect(err).NotTo(HaveOccurred())
+
+		By("creating manager namespace")
+		cmd = exec.Command("kubectl", "create", "ns", namespace)
+		_, err = utils.Run(cmd)
 		Expect(err).NotTo(HaveOccurred(), "Failed to create namespace")
 
 		By("labeling the namespace to enforce the restricted security policy")
@@ -62,6 +76,18 @@ var _ = Describe("Manager", Ordered, func() {
 			"pod-security.kubernetes.io/enforce=restricted")
 		_, err = utils.Run(cmd)
 		Expect(err).NotTo(HaveOccurred(), "Failed to label namespace with restricted policy")
+
+		By("creating admin API secret in controller and garage namespaces")
+		garageAdminToken := integrationtests.GenerateRandomString(base64.StdEncoding.EncodeToString)
+
+		for _, ns := range []string{garageNs, namespace} {
+			cmd = exec.Command("kubectl", "create", "secret", "generic", garageSecret,
+				fmt.Sprintf("--from-literal=%s=%s", garageSecretKey, garageAdminToken),
+				"--namespace", ns,
+			)
+			_, err = utils.Run(cmd)
+			Expect(err).NotTo(HaveOccurred())
+		}
 
 		By("installing CRDs")
 		cmd = exec.Command("make", "install")
