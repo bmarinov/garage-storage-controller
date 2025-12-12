@@ -73,9 +73,13 @@ var _ = Describe("AccessKey Controller", func() {
 			resource := &garagev1alpha1.AccessKey{}
 			err := k8sClient.Get(ctx, typeNamespacedName, resource)
 			Expect(err).NotTo(HaveOccurred())
+			var secret corev1.Secret
+			err = k8sClient.Get(ctx, types.NamespacedName{Namespace: resource.Namespace, Name: resource.Spec.SecretName}, &secret)
+			Expect(err).NotTo(HaveOccurred())
 
 			By("Cleanup the specific resource instance AccessKey")
 			Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
+			Expect(k8sClient.Delete(ctx, &secret)).To(Succeed())
 		})
 		It("should successfully reconcile the resource", func() {
 			sut, extAPI := setup()
@@ -173,8 +177,8 @@ var _ = Describe("AccessKey Controller", func() {
 
 			By("setting owner refs")
 			expectedRef := metav1.OwnerReference{
-				APIVersion:         accessKey.APIVersion,
-				Kind:               accessKey.Kind,
+				APIVersion:         "garage.getclustered.net/v1alpha1",
+				Kind:               "AccessKey",
 				Name:               accessKey.Name,
 				UID:                accessKey.UID,
 				Controller:         ptr.To(true),
