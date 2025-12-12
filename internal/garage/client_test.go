@@ -6,7 +6,6 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"net/url"
 	"reflect"
 	"testing"
 
@@ -122,8 +121,7 @@ func TestBucketClient(t *testing.T) {
 }
 
 func TestAccessKeyClient(t *testing.T) {
-	apiV2, _ := url.JoinPath(garageEnv.AdminAPIAddr, "/v2")
-	apiclient := NewClient(apiV2, garageEnv.APIToken)
+	apiclient := NewClient(garageEnv.AdminAPIAddr, garageEnv.APIToken)
 	sut := apiclient.AccessKeyClient
 
 	t.Run("Create", func(t *testing.T) {

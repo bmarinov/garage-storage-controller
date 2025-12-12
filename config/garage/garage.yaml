@@ -18,15 +18,16 @@ spec:
         - name: config
           configMap:
             name: garage-config
-      securityContext:
-        runAsNonRoot: true
-        runAsUser: 65532
-        runAsGroup: 65532
-        seccompProfile:
-          type: RuntimeDefault
+        - name: metadata
+          emptyDir: {}
+        - name: data
+          emptyDir: {}
       containers:
       - name: garage
         image: dxflrs/garage:v2.1.0
+        securityContext:
+          readOnlyRootFilesystem: true
+          runAsNonRoot: false
         ports:
         - containerPort: 3900
           name: s3-api
@@ -35,8 +36,18 @@ spec:
         - containerPort: 3903
           name: admin-api
         env: []
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            cpu: 1500m
+            memory: 256Mi
         volumeMounts:
         - name: config
           mountPath: /etc/garage.toml
           subPath: garage.toml
-
+        - name: metadata
+          mountPath: /var/lib/garage/meta
+        - name: metadata
+          mountPath: /var/lib/garage/data
