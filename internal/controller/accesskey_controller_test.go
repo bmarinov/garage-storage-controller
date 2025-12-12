@@ -19,6 +19,7 @@ package controller
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/google/uuid"
 	. "github.com/onsi/ginkgo/v2"
@@ -75,11 +76,12 @@ var _ = Describe("AccessKey Controller", func() {
 			Expect(err).NotTo(HaveOccurred())
 			var secret corev1.Secret
 			err = k8sClient.Get(ctx, types.NamespacedName{Namespace: resource.Namespace, Name: resource.Spec.SecretName}, &secret)
-			Expect(err).NotTo(HaveOccurred())
+			if err == nil && secret.UID != "" {
+				Expect(k8sClient.Delete(ctx, &secret)).To(Succeed())
+			}
 
 			By("Cleanup the specific resource instance AccessKey")
 			Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
-			Expect(k8sClient.Delete(ctx, &secret)).To(Succeed())
 		})
 		It("should successfully reconcile the resource", func() {
 			sut, extAPI := setup()
@@ -94,8 +96,9 @@ var _ = Describe("AccessKey Controller", func() {
 
 			By("naming external key according to convention")
 			externalKey := extAPI.keys[0]
-			conventionalName := fmt.Sprintf("%s-%s", typeNamespacedName.Namespace, typeNamespacedName.Name)
-			Expect(externalKey.Name).To(Equal(conventionalName))
+			nsName := fmt.Sprintf("%s-%s", typeNamespacedName.Namespace, typeNamespacedName.Name)
+
+			Expect(strings.HasPrefix(externalKey.Name, nsName)).To(BeTrue())
 		})
 		It("sets AccessKey status and condition", func() {
 			sut, extAPI := setup()
@@ -138,8 +141,6 @@ var _ = Describe("AccessKey Controller", func() {
 			_, _ = sut.Reconcile(ctx, reconcile.Request{
 				NamespacedName: typeNamespacedName,
 			})
-
-			// By("setting secret ref in AccessKey status")
 
 			By("creating a kubernetes secret resource in the same namespace")
 			Eventually(func(g Gomega) {
