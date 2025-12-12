@@ -1,11 +1,13 @@
 package garage
 
-type Bucket struct {
-	ID string `json:"id"`
-
-	GlobalAliases []string `json:"globalAliases"`
-
+type BucketUpdateRequest struct {
 	Quotas Quotas `json:"quotas"`
+}
+
+type BucketResponse struct {
+	ID            string   `json:"id"`
+	GlobalAliases []string `json:"globalAliases"`
+	Quotas        Quotas   `json:"quotas"`
 }
 
 type Quotas struct {
@@ -13,8 +15,13 @@ type Quotas struct {
 	MaxSize    int64 `json:"maxSize"`
 }
 
-type AccessKey struct {
-	ID     string
-	Secret string
-	Name   string
+type CreateKeyRequest struct {
+	Name         string `json:"name"`
+	NeverExpires bool   `json:"neverExpires"`
+}
+
+type AccessKeyResponse struct {
+	AccessKeyID     string `json:"accessKeyId"`
+	SecretAccessKey string `json:"secretAccessKey"`
+	Name            string `json:"name"`
 }

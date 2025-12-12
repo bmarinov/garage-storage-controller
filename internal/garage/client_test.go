@@ -2,13 +2,16 @@ package garage
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
-	"net/url"
+	"fmt"
 	"reflect"
 	"testing"
 
 	"github.com/bmarinov/garage-storage-controller/internal/garage/integrationtests"
 	"github.com/bmarinov/garage-storage-controller/internal/s3"
+	"github.com/google/uuid"
 )
 
 var garageEnv integrationtests.Environment
@@ -21,8 +24,7 @@ func TestMain(m *testing.M) {
 }
 
 func TestBucketClient(t *testing.T) {
-	apiV2, _ := url.JoinPath(garageEnv.AdminAPIAddr, "/v2")
-	apiclient := NewClient(apiV2, garageEnv.APIToken)
+	apiclient := NewClient(garageEnv.AdminAPIAddr, garageEnv.APIToken)
 	sut := apiclient.BucketClient
 
 	t.Run("Create", func(t *testing.T) {
@@ -59,7 +61,7 @@ func TestBucketClient(t *testing.T) {
 		})
 	})
 	t.Run("Get", func(t *testing.T) {
-		t.Run("retrieve created bucket info", func(t *testing.T) {
+		t.Run("existing bucket info", func(t *testing.T) {
 			newBucket := "blap313"
 			created, err := sut.Create(t.Context(), newBucket)
 			if err != nil {
@@ -82,6 +84,83 @@ func TestBucketClient(t *testing.T) {
 			}
 			if !errors.Is(err, s3.ErrBucketNotFound) {
 				t.Errorf("expected error %v got %v", s3.ErrBucketNotFound, err)
+			}
+		})
+	})
+	t.Run("Update", func(t *testing.T) {
+		t.Run("new quota", func(t *testing.T) {
+			bucket, _ := sut.Create(t.Context(), "update-quotas")
+
+			newQuotas := s3.Quotas{
+				MaxObjects: 9500,
+				MaxSize:    350,
+			}
+
+			err := sut.Update(t.Context(), bucket.ID, newQuotas)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			retrieved, err := sut.Get(t.Context(), bucket.GlobalAliases[0])
+			if err != nil {
+				t.Fatal(err)
+			}
+			if retrieved.Quotas.MaxSize != newQuotas.MaxSize ||
+				retrieved.Quotas.MaxObjects != newQuotas.MaxObjects {
+				t.Errorf("quotas dont match: expected %v got %v", newQuotas, retrieved.Quotas)
+			}
+		})
+		t.Run("unknown bucket ID", func(t *testing.T) {
+			unknownID := integrationtests.GenerateRandomString(hex.EncodeToString)
+			err := sut.Update(t.Context(), unknownID, s3.Quotas{MaxObjects: 3})
+			if err == nil || !errors.Is(err, s3.ErrBucketNotFound) {
+				t.Fatalf("expected error %v got %v", s3.ErrBucketNotFound, err)
+			}
+		})
+	})
+}
+
+func TestAccessKeyClient(t *testing.T) {
+	apiclient := NewClient(garageEnv.AdminAPIAddr, garageEnv.APIToken)
+	sut := apiclient.AccessKeyClient
+
+	t.Run("Create", func(t *testing.T) {
+		t.Run("new key", func(t *testing.T) {
+			key, err := sut.Create(t.Context(), "somename")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if key.ID == "" || key.Name != "somename" || key.Secret == "" {
+				t.Errorf("unexpected value in key fields: %v", key)
+			}
+		})
+		t.Run("two keys with the same name", func(t *testing.T) {
+			keyName := "testfoo312"
+
+			first, err := sut.Create(t.Context(), keyName)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			second, err := sut.Create(t.Context(), keyName)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if first.ID == second.ID || first.Secret == second.Secret {
+				t.Error("keys should not share ID or secret")
+			}
+		})
+		t.Run("with naming convention", func(t *testing.T) {
+			uid := uuid.New()
+			hash := sha256.Sum256(uid[:])
+			suffix := hash[:4]
+			keyName := fmt.Sprintf("namespacefoo-keybar-%x", suffix)
+			key, err := sut.Create(t.Context(), keyName)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if key.Name != keyName {
+				t.Errorf("expected %s got %s", keyName, key.Name)
 			}
 		})
 	})

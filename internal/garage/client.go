@@ -10,7 +10,6 @@ import (
 	"net/url"
 
 	"github.com/bmarinov/garage-storage-controller/internal/s3"
-	"github.com/google/uuid"
 )
 
 type AdminClient struct {
@@ -27,6 +26,9 @@ func NewClient(apiAddr string, token string) *AdminClient {
 
 	return &AdminClient{
 		BucketClient: &BucketClient{
+			&baseClient,
+		},
+		AccessKeyClient: &AccessKeyClient{
 			&baseClient,
 		},
 	}
@@ -76,14 +78,45 @@ func (c *adminAPIHttpClient) doRequest(ctx context.Context,
 }
 
 type AccessKeyClient struct {
+	*adminAPIHttpClient
 }
 
 func (a *AccessKeyClient) Create(ctx context.Context, keyName string) (s3.AccessKey, error) {
+	// TODO: expose in client api?
+	neverExpires := true
+
+	request := CreateKeyRequest{
+		Name:         keyName,
+		NeverExpires: neverExpires,
+	}
+	var buf bytes.Buffer
+	err := json.NewEncoder(&buf).Encode(request)
+	if err != nil {
+		return s3.AccessKey{}, fmt.Errorf("marshal request: %w", err)
+	}
+
+	const path = "/v2/CreateKey"
+	response, err := a.doRequest(ctx, http.MethodPost, path, nil, &buf)
+
+	if err != nil {
+		return s3.AccessKey{}, fmt.Errorf("create key: %w", err)
+	}
+	defer func() {
+		_ = response.Body.Close()
+	}()
+	if response.StatusCode != http.StatusOK {
+		return s3.AccessKey{}, fmt.Errorf("unexpected status code %d", response.StatusCode)
+	}
+
+	result, err := unmarshalBody[AccessKeyResponse](response.Body)
+	if err != nil {
+		return s3.AccessKey{}, err
+	}
 
 	return s3.AccessKey{
-		ID:     uuid.NewString(),
-		Secret: uuid.NewString(),
-		Name:   keyName,
+		ID:     result.AccessKeyID,
+		Name:   result.Name,
+		Secret: result.SecretAccessKey,
 	}, nil
 }
 
@@ -97,15 +130,20 @@ type BucketClient struct {
 
 func (b *BucketClient) Create(ctx context.Context, globalAlias string) (s3.Bucket, error) {
 	request := map[string]string{"globalAlias": globalAlias}
-	payload, err := json.Marshal(request)
+	var buf bytes.Buffer
+	err := json.NewEncoder(&buf).Encode(request)
 	if err != nil {
-		return s3.Bucket{}, err
+		return s3.Bucket{}, fmt.Errorf("marshal request: %w", err)
 	}
 
-	resp, err := b.doRequest(ctx, http.MethodPost, "/CreateBucket", nil, bytes.NewBuffer(payload))
+	const path = "/v2/CreateBucket"
+	resp, err := b.doRequest(ctx, http.MethodPost, path, nil, &buf)
 	if err != nil {
 		return s3.Bucket{}, err
 	}
+	defer func() {
+		_ = resp.Body.Close()
+	}()
 
 	if resp.StatusCode != http.StatusOK {
 		if resp.StatusCode == http.StatusConflict {
@@ -114,13 +152,7 @@ func (b *BucketClient) Create(ctx context.Context, globalAlias string) (s3.Bucke
 		return s3.Bucket{}, fmt.Errorf("unexpected status code %d", resp.StatusCode)
 	}
 
-	responseBytes, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return s3.Bucket{}, fmt.Errorf("reading response: %w", err)
-	}
-
-	var result Bucket
-	err = json.Unmarshal(responseBytes, &result)
+	result, err := unmarshalBody[BucketResponse](resp.Body)
 
 	return s3.Bucket{
 		ID:            result.ID,
@@ -134,12 +166,15 @@ func (b *BucketClient) Get(ctx context.Context, globalAlias string) (s3.Bucket, 
 	// params.Add("id", bucketID)
 	params.Add("globalAlias", globalAlias)
 
-	path := "GetBucketInfo"
+	const path = "/v2/GetBucketInfo"
 
 	resp, err := b.doRequest(ctx, http.MethodGet, path, &params, nil)
 	if err != nil {
 		return s3.Bucket{}, fmt.Errorf("retrieve bucket '%s': %w", globalAlias, err)
 	}
+	defer func() {
+		_ = resp.Body.Close()
+	}()
 	if resp.StatusCode != http.StatusOK {
 		if resp.StatusCode == http.StatusNotFound {
 			return s3.Bucket{}, fmt.Errorf("%w: %w", s3.ErrBucketNotFound, err)
@@ -147,14 +182,9 @@ func (b *BucketClient) Get(ctx context.Context, globalAlias string) (s3.Bucket, 
 		return s3.Bucket{}, fmt.Errorf("unexpected status code %d", resp.StatusCode)
 	}
 
-	var result Bucket
-	responseBytes, err := io.ReadAll(resp.Body)
+	result, err := unmarshalBody[BucketResponse](resp.Body)
 	if err != nil {
-		return s3.Bucket{}, fmt.Errorf("reading response: %w", err)
-	}
-	err = json.Unmarshal(responseBytes, &result)
-	if err != nil {
-		return s3.Bucket{}, nil
+		return s3.Bucket{}, fmt.Errorf("reading %s response: %w", path, err)
 	}
 
 	return s3.Bucket{
@@ -165,5 +195,40 @@ func (b *BucketClient) Get(ctx context.Context, globalAlias string) (s3.Bucket, 
 }
 
 func (b *BucketClient) Update(ctx context.Context, id string, quotas s3.Quotas) error {
+	request := BucketUpdateRequest{
+		Quotas: Quotas(quotas),
+	}
+
+	var buf bytes.Buffer
+	err := json.NewEncoder(&buf).Encode(request)
+	if err != nil {
+		return fmt.Errorf("marshal request: %w", err)
+	}
+
+	const path = "/v2/UpdateBucket"
+	params := url.Values{}
+	params.Add("id", id)
+
+	response, err := b.doRequest(ctx, http.MethodPost, path, &params, &buf)
+	if err != nil {
+		return fmt.Errorf("update bucket request: %w", err)
+	}
+	defer func() {
+		_ = response.Body.Close()
+	}()
+	if response.StatusCode != http.StatusOK {
+		if response.StatusCode == http.StatusNotFound {
+			return fmt.Errorf("update bucket: %w for id '%s'", s3.ErrBucketNotFound, id)
+		}
+		body, _ := io.ReadAll(response.Body)
+		return fmt.Errorf("update bucket: unexpected status code %d: %s", response.StatusCode, string(body))
+	}
+
 	return nil
+}
+
+func unmarshalBody[T any](body io.ReadCloser) (T, error) {
+	var result T
+	err := json.NewDecoder(body).Decode(&result)
+	return result, err
 }

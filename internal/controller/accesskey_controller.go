@@ -18,6 +18,7 @@ package controller
 
 import (
 	"context"
+	"crypto/sha256"
 	"fmt"
 
 	corev1 "k8s.io/api/core/v1"
@@ -120,12 +121,25 @@ func (r *AccessKeyReconciler) reconcileAccessKey(ctx context.Context, key *Acces
 }
 
 func (r *AccessKeyReconciler) ensureExternalKey(ctx context.Context, resource garagev1alpha1.AccessKey) (s3.AccessKey, error) {
-	externalKeyName := namespacedKeyName(resource.ObjectMeta)
+	externalKeyName := namespacedResourceName(resource.ObjectMeta)
+
+	if resource.Status.ID != "" {
+		existing, err := r.accessKey.Get(ctx, resource.Status.ID, "")
+		if err != nil {
+			panic("implement")
+			// if errors.Is(err, s3.ErrAccessKeyNotFound) {
+
+			// }
+		}
+
+		return existing, err
+	}
+	// TODO:
+	// fetch first? key name is not unique
+	// existing, err := r.accessKey.Get(ctx, "", externalKeyName)
 	newKey, err := r.accessKey.Create(ctx, externalKeyName)
 
 	if err != nil {
-		// TODO: queue only for known error eg exists+code
-		// else:
 		return s3.AccessKey{}, err
 	}
 
@@ -147,7 +161,7 @@ func (r *AccessKeyReconciler) ensureSecret(ctx context.Context,
 		Data: map[string][]byte{},
 	}
 
-	err := controllerutil.SetOwnerReference(&parent, &secretRes, r.Scheme)
+	err := controllerutil.SetControllerReference(&parent, &secretRes, r.Scheme)
 	if err != nil {
 		return fmt.Errorf("setting owner reference on secret: %w", err)
 	}
@@ -163,10 +177,10 @@ func (r *AccessKeyReconciler) ensureSecret(ctx context.Context,
 	return err
 }
 
-// namespacedKeyName returns a key name including the namespace to avoid conflicts.
-func namespacedKeyName(meta v1.ObjectMeta) string {
-	// consider a random suffix:
-	return meta.Namespace + "-" + meta.Name
+// namespacedResourceName returns a key name including the namespace and a suffix from the UID hash.
+func namespacedResourceName(meta v1.ObjectMeta) string {
+	hash := sha256.Sum256([]byte(meta.UID))
+	return meta.Namespace + "-" + meta.Name + "-" + string(hash[:3])
 }
 
 // SetupWithManager sets up the controller with the Manager.

@@ -1,0 +1,49 @@
+namespace: garage-system
+images:
+  - name: dxflrs/garage
+    newName: docker.io/dxflrs/garage
+    newTag: v2.1.0
+
+resources:
+  - garage.yaml
+  - service.yaml
+
+configMapGenerator:
+- name: garage-config
+  files:
+  - garage.toml=./garage-e2e.toml
+
+patches:
+- patch: |-
+    - op: add
+      path: /spec/serviceName
+      value: garage-storage-controller-svc
+    - op: add
+      path: /spec/template/spec/containers/0/env/-
+      value:
+        name: GARAGE_ADMIN_TOKEN
+        valueFrom:
+          secretKeyRef:
+            name: garage-api-token
+            key: api-token
+    - op: add
+      path: /spec/template/spec/containers/0/env/-
+      value:
+        name: GARAGE_RPC_SECRET
+        valueFrom:
+          secretKeyRef:
+            name: garage-rpc-secret
+            key: secret
+    - op: replace
+      path: /spec/template/spec/containers/0/securityContext
+      value:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+# TODO: ^^ remove 'run as root' patch once compat is built into the image ^^
+  target:
+    group: apps
+    version: v1
+    kind: StatefulSet
+    name: garage
+# TODO: generate the secret at startup

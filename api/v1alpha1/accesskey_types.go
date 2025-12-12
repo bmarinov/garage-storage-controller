@@ -30,7 +30,7 @@ type AccessKeySpec struct {
 	// TODO: TBD: requires credential rotation
 	// Expiration time.Time
 
-	// The name of the secret holding the credentials.
+	// The name of the secret that will be created to store the credentials.
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="Value is immutable"
 	SecretName string `json:"secretName"`

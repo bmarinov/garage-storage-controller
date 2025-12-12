@@ -12,6 +12,8 @@ import (
 	"strings"
 	"time"
 
+	testutil "github.com/bmarinov/garage-storage-controller/internal/tests"
+
 	"github.com/docker/docker/pkg/stdcopy"
 	"github.com/docker/go-connections/nat"
 	"github.com/testcontainers/testcontainers-go"
@@ -42,13 +44,13 @@ func (e *Environment) Terminate(ctx context.Context) {
 func NewGarageEnv() Environment {
 	ctx := context.TODO()
 
-	adminSecret := generateSecret(base64.StdEncoding.EncodeToString)
+	adminSecret := GenerateRandomString(base64.StdEncoding.EncodeToString)
 
 	container, err := testcontainers.Run(ctx, image,
 		testcontainers.WithEnv(
 			map[string]string{
 				"GARAGE_ADMIN_TOKEN": adminSecret,
-				"GARAGE_RPC_SECRET":  generateSecret(hex.EncodeToString),
+				"GARAGE_RPC_SECRET":  GenerateRandomString(hex.EncodeToString),
 			},
 		),
 		testcontainers.WithExposedPorts(adminPort),
@@ -63,23 +65,9 @@ func NewGarageEnv() Environment {
 		testcontainers.WithLifecycleHooks(testcontainers.ContainerLifecycleHooks{
 			PostReadies: []testcontainers.ContainerHook{
 				func(ctx context.Context, container testcontainers.Container) error {
-					stdout, err := containerCmd(ctx, container, "/garage", "node", "id", "--quiet")
-					if err != nil {
-						return fmt.Errorf("obtaining node ID: %w", err)
-					}
-
-					nodeID := strings.Split(stdout, "@")[0]
-
-					stdout, err = containerCmd(ctx, container, "/garage", "layout", "assign", "-z", "testenv", "-c", "100M", nodeID)
-					if err != nil {
-						return fmt.Errorf("assign layout: %w output: %s", err, stdout)
-					}
-					stdout, err = containerCmd(ctx, container, "/garage", "layout", "apply", "--version", "1")
-					if err != nil {
-						return fmt.Errorf("apply layout: %w: %s", err, stdout)
-					}
-
-					return nil
+					return testutil.InitGarageLayout(ctx, func(ctx context.Context, command ...string) (stdout string, err error) {
+						return containerCmd(ctx, container, command...)
+					})
 				},
 				func(ctx context.Context, ctr testcontainers.Container) error {
 					return clusterLayoutReady.WaitUntilReady(ctx, ctr)
@@ -106,8 +94,8 @@ func NewGarageEnv() Environment {
 	}
 }
 
-// generateSecret returns a random string encoded with encodeFn.
-func generateSecret(encodeFn func([]byte) string) string {
+// GenerateRandomString returns a random string encoded with encodeFn.
+func GenerateRandomString(encodeFn func([]byte) string) string {
 	b := make([]byte, 32)
 	_, err := rand.Read(b)
 	if err != nil {
