@@ -95,7 +95,7 @@ func (a *AccessKeyClient) Create(ctx context.Context, keyName string) (s3.Access
 		return s3.AccessKey{}, fmt.Errorf("marshal request: %w", err)
 	}
 
-	const path = "CreateKey"
+	const path = "/v2/CreateKey"
 	response, err := a.doRequest(ctx, http.MethodPost, path, nil, &buf)
 
 	if err != nil {
@@ -136,7 +136,8 @@ func (b *BucketClient) Create(ctx context.Context, globalAlias string) (s3.Bucke
 		return s3.Bucket{}, fmt.Errorf("marshal request: %w", err)
 	}
 
-	resp, err := b.doRequest(ctx, http.MethodPost, "/CreateBucket", nil, &buf)
+	const path = "/v2/CreateBucket"
+	resp, err := b.doRequest(ctx, http.MethodPost, path, nil, &buf)
 	if err != nil {
 		return s3.Bucket{}, err
 	}
@@ -165,7 +166,7 @@ func (b *BucketClient) Get(ctx context.Context, globalAlias string) (s3.Bucket, 
 	// params.Add("id", bucketID)
 	params.Add("globalAlias", globalAlias)
 
-	const path = "GetBucketInfo"
+	const path = "/v2/GetBucketInfo"
 
 	resp, err := b.doRequest(ctx, http.MethodGet, path, &params, nil)
 	if err != nil {
@@ -204,7 +205,7 @@ func (b *BucketClient) Update(ctx context.Context, id string, quotas s3.Quotas) 
 		return fmt.Errorf("marshal request: %w", err)
 	}
 
-	const path = "UpdateBucket"
+	const path = "/v2/UpdateBucket"
 	params := url.Values{}
 	params.Add("id", id)
 

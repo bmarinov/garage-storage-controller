@@ -12,6 +12,8 @@ import (
 	"strings"
 	"time"
 
+	testutil "github.com/bmarinov/garage-storage-controller/internal/tests"
+
 	"github.com/docker/docker/pkg/stdcopy"
 	"github.com/docker/go-connections/nat"
 	"github.com/testcontainers/testcontainers-go"
@@ -63,23 +65,9 @@ func NewGarageEnv() Environment {
 		testcontainers.WithLifecycleHooks(testcontainers.ContainerLifecycleHooks{
 			PostReadies: []testcontainers.ContainerHook{
 				func(ctx context.Context, container testcontainers.Container) error {
-					stdout, err := containerCmd(ctx, container, "/garage", "node", "id", "--quiet")
-					if err != nil {
-						return fmt.Errorf("obtaining node ID: %w", err)
-					}
-
-					nodeID := strings.Split(stdout, "@")[0]
-
-					stdout, err = containerCmd(ctx, container, "/garage", "layout", "assign", "-z", "testenv", "-c", "100M", nodeID)
-					if err != nil {
-						return fmt.Errorf("assign layout: %w output: %s", err, stdout)
-					}
-					stdout, err = containerCmd(ctx, container, "/garage", "layout", "apply", "--version", "1")
-					if err != nil {
-						return fmt.Errorf("apply layout: %w: %s", err, stdout)
-					}
-
-					return nil
+					return testutil.InitGarageLayout(ctx, func(ctx context.Context, command ...string) (stdout string, err error) {
+						return containerCmd(ctx, container, command...)
+					})
 				},
 				func(ctx context.Context, ctr testcontainers.Container) error {
 					return clusterLayoutReady.WaitUntilReady(ctx, ctr)

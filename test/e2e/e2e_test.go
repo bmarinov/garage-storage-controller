@@ -20,7 +20,9 @@ limitations under the License.
 package e2e
 
 import (
+	"context"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -32,8 +34,17 @@ import (
 	. "github.com/onsi/gomega"
 
 	"github.com/bmarinov/garage-storage-controller/internal/garage/integrationtests"
+	"github.com/bmarinov/garage-storage-controller/internal/tests"
 	"github.com/bmarinov/garage-storage-controller/test/utils"
 )
+
+var wellKnown = struct {
+	accessKeyName string
+	secretName    string
+}{
+	accessKeyName: "accesskey-sample",
+	secretName:    "foo-some-secret",
+}
 
 // namespace where the project is deployed in
 const namespace = "garage-storage-controller-system"
@@ -47,8 +58,11 @@ const metricsServiceName = "garage-storage-controller-controller-manager-metrics
 // metricsRoleBindingName is the name of the RBAC that will be created to allow get the metrics data
 const metricsRoleBindingName = "garage-storage-controller-metrics-binding"
 
-// garageSecret contains the admin token for the Garage API, needed in the controller.
-const garageSecret = "garage-api-token"
+// garageAPISecret contains the token for the admin Garage API.
+const garageAPISecret = "garage-api-token"
+
+// garageRPCSecret contains the rpc_secret for Garage.
+const garageRPCSecret = "garage-rpc-secret"
 
 // garageSecretKey is the key in the secret pointing to the admin token.
 const garageSecretKey = "api-token"
@@ -83,7 +97,7 @@ var _ = Describe("Manager", Ordered, func() {
 		garageAdminToken := integrationtests.GenerateRandomString(base64.StdEncoding.EncodeToString)
 
 		for _, ns := range []string{garageNamespace, namespace} {
-			cmd = exec.Command("kubectl", "create", "secret", "generic", garageSecret,
+			cmd = exec.Command("kubectl", "create", "secret", "generic", garageAPISecret,
 				fmt.Sprintf("--from-literal=%s=%s", garageSecretKey, garageAdminToken),
 				"--namespace", ns,
 			)
@@ -96,10 +110,33 @@ var _ = Describe("Manager", Ordered, func() {
 		_, err = utils.Run(cmd)
 		Expect(err).NotTo(HaveOccurred(), "Failed to install CRDs")
 
+		By("creating Garage secret")
+		cmd = exec.Command("kubectl", "create", "secret", "generic", garageRPCSecret,
+			fmt.Sprintf("--from-literal=%s=%s", "secret", integrationtests.GenerateRandomString(hex.EncodeToString)),
+			"--namespace", garageNamespace,
+		)
+		Expect(cmd.Run()).To(Succeed())
+
 		By("deploying the controller-manager")
 		cmd = exec.Command("make", "deploy", fmt.Sprintf("IMG=%s", projectImage))
 		_, err = utils.Run(cmd)
 		Expect(err).NotTo(HaveOccurred(), "Failed to deploy the controller-manager")
+
+		By("waiting for Garage startup")
+		garagePod := "garage-storage-controller-garage-0"
+		Eventually(func() error {
+			cmd := exec.Command("kubectl", "wait",
+				"--for=condition=ready",
+				fmt.Sprintf("pod/%s", garagePod),
+				"-n", garageNamespace,
+				"--timeout=5s")
+			_, err := utils.Run(cmd)
+			return err
+		}, 15*time.Second, time.Second*1).Should(Succeed())
+
+		By("initializing garage cluster")
+		err = tests.InitGarageLayout(context.TODO(), NamespacePodExec(garageNamespace, garagePod))
+		Expect(err).ToNot(HaveOccurred())
 	})
 
 	// After all tests have been executed, clean up by undeploying the controller, uninstalling CRDs,
@@ -294,17 +331,28 @@ var _ = Describe("Manager", Ordered, func() {
 			Eventually(verifyMetricsAvailable, 2*time.Minute).Should(Succeed())
 		})
 
+		It("should deploy external resources", func() {
+			By("creating AccessKey API resource")
+			cmd := exec.Command("kubectl", "apply", "-f", "config/samples/garage_v1alpha1_accesskey.yaml")
+			_, err := utils.Run(cmd)
+			Expect(err).To(Succeed())
+
+			By("waiting for AccessKey Ready")
+			Eventually(func(g Gomega) {
+				cmd := exec.Command("kubectl",
+					"wait", "accesskey", wellKnown.accessKeyName, "--for=condition=Ready", "--timeout=1s")
+				g.Expect(cmd.Run()).To(Succeed())
+			}, 5*time.Second).Should(Succeed())
+
+			By("namespace secret created")
+			cmd = exec.Command("kubectl", "get", "secret", "-n", "default",
+				wellKnown.secretName)
+			Expect(cmd.Run()).Should(Succeed())
+		})
+
 		// +kubebuilder:scaffold:e2e-webhooks-checks
 
-		// TODO: Customize the e2e test suite with scenarios specific to your project.
-		// Consider applying sample/CR(s) and check their status and/or verifying
-		// the reconciliation by using the metrics, i.e.:
-		// metricsOutput, err := getMetricsOutput()
-		// Expect(err).NotTo(HaveOccurred(), "Failed to retrieve logs from curl pod")
-		// Expect(metricsOutput).To(ContainSubstring(
-		//    fmt.Sprintf(`controller_runtime_reconcile_total{controller="%s",result="success"} 1`,
-		//    strings.ToLower(<Kind>),
-		// ))
+		// TBD: webhooks or validation?
 	})
 })
 

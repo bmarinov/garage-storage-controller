@@ -25,8 +25,7 @@ func TestMain(m *testing.M) {
 }
 
 func TestBucketClient(t *testing.T) {
-	apiV2, _ := url.JoinPath(garageEnv.AdminAPIAddr, "/v2")
-	apiclient := NewClient(apiV2, garageEnv.APIToken)
+	apiclient := NewClient(garageEnv.AdminAPIAddr, garageEnv.APIToken)
 	sut := apiclient.BucketClient
 
 	t.Run("Create", func(t *testing.T) {

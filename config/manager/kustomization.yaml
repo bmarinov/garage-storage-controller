@@ -1,7 +1,9 @@
-resources:
-- manager.yaml
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
+namespace: garage-storage-controller-system
+resources:
+- manager.yaml
+- metrics_service.yaml
 images:
 - name: controller
   newName: garage.getclustered.net/garage-storage-controller
@@ -12,7 +14,7 @@ patches:
       path: /spec/template/spec/containers/0/env/-
       value:
         name: GARAGE_API_ENDPOINT
-        value: http://garage.garage-system.svc.cluster.local:3903
+        value: http://garage-storage-controller-garage-0.garage-storage-controller-svc.garage-system.svc.cluster.local:3903
     - op: add
       path: /spec/template/spec/containers/0/env/-
       value:
@@ -26,3 +28,6 @@ patches:
     kind: Deployment
     name: controller-manager
     version: v1
+- path: manager_metrics_patch.yaml
+  target:
+    kind: Deployment
