@@ -180,7 +180,7 @@ func (r *AccessKeyReconciler) ensureSecret(ctx context.Context,
 // namespacedResourceName returns a key name including the namespace and a suffix from the UID hash.
 func namespacedResourceName(meta v1.ObjectMeta) string {
 	hash := sha256.Sum256([]byte(meta.UID))
-	return meta.Namespace + "-" + meta.Name + "-" + string(hash[:3])
+	return fmt.Sprintf("%s-%s-%x", meta.Namespace, meta.Name, hash[:8])
 }
 
 // SetupWithManager sets up the controller with the Manager.
