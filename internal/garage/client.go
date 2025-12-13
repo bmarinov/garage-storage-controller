@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strconv"
 
 	"github.com/bmarinov/garage-storage-controller/internal/s3"
 )
@@ -121,17 +122,18 @@ func (a *AccessKeyClient) Create(ctx context.Context, keyName string) (s3.Access
 }
 
 func (a *AccessKeyClient) Get(ctx context.Context, id string) (s3.AccessKey, error) {
-	return a.get(ctx, id, "")
+	return a.get(ctx, id, "", true)
 }
 
 func (a *AccessKeyClient) Lookup(ctx context.Context, search string) (s3.AccessKey, error) {
-	return a.get(ctx, "", search)
+	return a.get(ctx, "", search, true)
 }
 
-func (a *AccessKeyClient) get(ctx context.Context, id string, search string) (s3.AccessKey, error) {
+func (a *AccessKeyClient) get(ctx context.Context, id string, search string, retrieveSecret bool) (s3.AccessKey, error) {
 	params := url.Values{}
 	params.Add("id", id)
 	params.Add("search", search)
+	params.Add("showSecretKey", strconv.FormatBool(retrieveSecret))
 
 	const path = "/v2/GetKeyInfo"
 

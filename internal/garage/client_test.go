@@ -178,6 +178,9 @@ func TestAccessKeyClient(t *testing.T) {
 			if created.ID != retrieved.ID {
 				t.Errorf("expected id %s got %s", created.ID, retrieved.ID)
 			}
+			if retrieved.Secret == "" {
+				t.Error("should always return secret")
+			}
 		})
 
 		t.Run("ID not found", func(t *testing.T) {
@@ -197,6 +200,9 @@ func TestAccessKeyClient(t *testing.T) {
 			}
 			if created.ID != retrieved.ID {
 				t.Errorf("expected ID %s got %s", created.ID, retrieved.ID)
+			}
+			if retrieved.Secret == "" {
+				t.Error("should always return secret")
 			}
 		})
 	})
