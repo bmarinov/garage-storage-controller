@@ -50,6 +50,9 @@ type AccessKeyStatus struct {
 	// The external Access Key identifier.
 	// +optional
 	ID string `json:"id,omitempty"`
+
+	// SecretName is the name of the secret created to store the access key.
+	SecretName string `json:"secretRef"`
 }
 
 // +kubebuilder:object:root=true

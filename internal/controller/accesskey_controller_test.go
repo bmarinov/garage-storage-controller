@@ -127,13 +127,15 @@ var _ = Describe("AccessKey Controller", func() {
 				g.Expect(keyCondition.ObservedGeneration).To(Equal(accessKey.Generation))
 			}).Should(Succeed())
 
-			By("storing key ID in status")
+			By("storing key ID and secret name in status")
 			Eventually(func(g Gomega) {
 				var accessKey garagev1alpha1.AccessKey
 				g.Expect(k8sClient.Get(ctx, typeNamespacedName, &accessKey)).To(Succeed())
 
-				expected := extAPI.keys[0].ID
-				g.Expect(accessKey.Status.ID).To(Equal(expected))
+				expectedKey := extAPI.keys[0]
+				g.Expect(accessKey.Status.ID).To(Equal(expectedKey.ID))
+				g.Expect(accessKey.Status.SecretName).To(Equal(expectedKey.Name))
+
 			}).Should(Succeed())
 		})
 		It("creates kubernetes secret with data from external access key", func() {
@@ -262,7 +264,7 @@ var _ = Describe("AccessKey Controller", func() {
 			By("comparing old and new IDs")
 			Expect(newKey.Status.ID).To(Not(Equal(oldKeyID)))
 		})
-		FIt("should reconcile after intermittent error on create", func() {
+		It("should reconcile after intermittent error on create", func() {
 			sut, externalAPI := setup()
 			accessKey := garagev1alpha1.AccessKey{
 				ObjectMeta: metav1.ObjectMeta{
@@ -273,6 +275,11 @@ var _ = Describe("AccessKey Controller", func() {
 					SecretName: "f61xg",
 				},
 			}
+			Expect(k8sClient.Create(ctx, &accessKey)).To(Succeed())
+			resourceName := types.NamespacedName{
+				Namespace: accessKey.Namespace,
+				Name:      accessKey.Name,
+			}
 
 			By("external key created")
 			expectedName := namespacedResourceName(accessKey.ObjectMeta)
@@ -280,10 +287,6 @@ var _ = Describe("AccessKey Controller", func() {
 			Expect(err).ToNot(HaveOccurred())
 
 			By("reconciling API resource")
-			Expect(k8sClient.Create(ctx, &accessKey)).To(Succeed())
-			resourceName := types.NamespacedName{
-				Namespace: accessKey.Namespace,
-				Name:      accessKey.Name}
 
 			_, err = sut.Reconcile(ctx, reconcile.Request{
 				NamespacedName: resourceName,
