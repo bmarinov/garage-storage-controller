@@ -19,6 +19,7 @@ package controller
 import (
 	"context"
 	"crypto/sha256"
+	"errors"
 	"fmt"
 
 	corev1 "k8s.io/api/core/v1"
@@ -62,8 +63,6 @@ type AccessKeyManager interface {
 // +kubebuilder:rbac:groups=garage.getclustered.net,resources=accesskeys/finalizers,verbs=update
 
 func (r *AccessKeyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	_ = logf.FromContext(ctx)
-
 	var accessKey garagev1alpha1.AccessKey
 	err := r.Get(ctx, req.NamespacedName, &accessKey)
 	if err != nil {
@@ -122,6 +121,7 @@ func (r *AccessKeyReconciler) reconcileAccessKey(ctx context.Context, key *Acces
 }
 
 func (r *AccessKeyReconciler) ensureExternalKey(ctx context.Context, resource garagev1alpha1.AccessKey) (s3.AccessKey, error) {
+	logger := logf.FromContext(ctx)
 	externalKeyName := namespacedResourceName(resource.ObjectMeta)
 
 	if resource.Status.ID != "" {
@@ -135,16 +135,19 @@ func (r *AccessKeyReconciler) ensureExternalKey(ctx context.Context, resource ga
 
 		return existing, err
 	}
-	// TODO:
-	// fetch first? key name is not unique
-	// existing, err := r.accessKey.Get(ctx, "", externalKeyName)
-	newKey, err := r.accessKey.Create(ctx, externalKeyName)
-
+	existingKey, err := r.accessKey.Lookup(ctx, externalKeyName)
 	if err != nil {
-		return s3.AccessKey{}, err
+		if errors.Is(err, s3.ErrKeyNotFound) {
+			newKey, err := r.accessKey.Create(ctx, externalKeyName)
+			return newKey, err
+		} else {
+			return s3.AccessKey{}, fmt.Errorf("unable to check for existing remote key: %w", err)
+		}
 	}
 
-	return newKey, nil
+	// key exists
+	logger.Info("found existing key matching name, reconciling state", "externalKeyName", externalKeyName, "resourceUID", resource.UID)
+	return existingKey, nil
 }
 
 func (r *AccessKeyReconciler) ensureSecret(ctx context.Context,
