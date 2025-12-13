@@ -164,4 +164,35 @@ func TestAccessKeyClient(t *testing.T) {
 			}
 		})
 	})
+	t.Run("Get", func(t *testing.T) {
+		name := "foo-canretrieve-key-bazz"
+		created, err := sut.Create(t.Context(), name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Run("retrieve by id", func(t *testing.T) {
+			retrieved, err := sut.Get(t.Context(), created.ID, "")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if created.ID != retrieved.ID {
+				t.Errorf("expected id %s got %s", created.ID, retrieved.ID)
+			}
+		})
+		t.Run("retrieve by name", func(t *testing.T) {
+			retrieved, err := sut.Get(t.Context(), "", name)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if created.ID != retrieved.ID {
+				t.Errorf("expected ID %s got %s", created.ID, retrieved.ID)
+			}
+		})
+		t.Run("ID not found", func(t *testing.T) {
+			_, err := sut.Get(t.Context(), "foo123-unknown-key", "")
+			if err == nil || !errors.Is(err, s3.ErrKeyNotFound) {
+				t.Errorf("expected error %v got %v", s3.ErrKeyNotFound, err)
+			}
+		})
+	})
 }

@@ -277,7 +277,7 @@ var _ = Describe("AccessKey Controller", func() {
 			By("external key created")
 			expectedName := namespacedResourceName(accessKey.ObjectMeta)
 			externalKey, err := externalAPI.Create(ctx, expectedName)
-			Expect(err).To(BeNil())
+			Expect(err).ToNot(HaveOccurred())
 
 			By("reconciling API resource")
 			Expect(k8sClient.Create(ctx, &accessKey)).To(Succeed())
@@ -288,14 +288,15 @@ var _ = Describe("AccessKey Controller", func() {
 			_, err = sut.Reconcile(ctx, reconcile.Request{
 				NamespacedName: resourceName,
 			})
-			Expect(err).To(BeNil())
+			Expect(err).ToNot(HaveOccurred())
 
 			By("retrieving API resource")
 			var retrievedKey garagev1alpha1.AccessKey
 			Expect(k8sClient.Get(ctx, resourceName, &retrievedKey)).To(Succeed())
 
-			By("storing existing ID in status")
-			Expect(retrievedKey.Status.ID).To(Equal(externalKey.ID))
+			By("storing existing external key ID in status")
+			Expect(retrievedKey.Status.ID).To(Equal(externalKey.ID),
+				"should not create new key")
 
 			// error during reconcile
 			// key exists but no Status.ID
@@ -307,6 +308,8 @@ var _ = Describe("AccessKey Controller", func() {
 			// restart recon
 			// should not create duplicate secrets
 		})
+		// more tests:
+		// - naming conflict with existing corev1 secret
 	})
 })
 
