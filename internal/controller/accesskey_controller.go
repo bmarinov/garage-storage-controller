@@ -53,7 +53,8 @@ func NewAccessKeyReconciler(c client.Client, s *runtime.Scheme, keyMgr AccessKey
 
 type AccessKeyManager interface {
 	Create(ctx context.Context, keyName string) (s3.AccessKey, error)
-	Get(ctx context.Context, id string, search string) (s3.AccessKey, error)
+	Get(ctx context.Context, id string) (s3.AccessKey, error)
+	Lookup(ctx context.Context, search string) (s3.AccessKey, error)
 }
 
 // +kubebuilder:rbac:groups=garage.getclustered.net,resources=accesskeys,verbs=get;list;watch;create;update;patch;delete
@@ -124,7 +125,7 @@ func (r *AccessKeyReconciler) ensureExternalKey(ctx context.Context, resource ga
 	externalKeyName := namespacedResourceName(resource.ObjectMeta)
 
 	if resource.Status.ID != "" {
-		existing, err := r.accessKey.Get(ctx, resource.Status.ID, "")
+		existing, err := r.accessKey.Get(ctx, resource.Status.ID)
 		if err != nil {
 			panic("implement")
 			// if errors.Is(err, s3.ErrAccessKeyNotFound) {

@@ -120,7 +120,15 @@ func (a *AccessKeyClient) Create(ctx context.Context, keyName string) (s3.Access
 	}, nil
 }
 
-func (a *AccessKeyClient) Get(ctx context.Context, id string, search string) (s3.AccessKey, error) {
+func (a *AccessKeyClient) Get(ctx context.Context, id string) (s3.AccessKey, error) {
+	return a.get(ctx, id, "")
+}
+
+func (a *AccessKeyClient) Lookup(ctx context.Context, search string) (s3.AccessKey, error) {
+	return a.get(ctx, "", search)
+}
+
+func (a *AccessKeyClient) get(ctx context.Context, id string, search string) (s3.AccessKey, error) {
 	params := url.Values{}
 	params.Add("id", id)
 	params.Add("search", search)

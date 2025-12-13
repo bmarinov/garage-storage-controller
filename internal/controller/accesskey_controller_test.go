@@ -220,7 +220,7 @@ var _ = Describe("AccessKey Controller", func() {
 			_ = k8sClient.Get(ctx, commonName, &oldKeyRes)
 			oldKeyID := oldKeyRes.Status.ID
 			Expect(oldKeyID).ToNot(BeEmpty())
-			oldRemoteKey, err := externalAPI.Get(ctx, oldKeyID, "")
+			oldRemoteKey, err := externalAPI.Get(ctx, oldKeyID)
 
 			Expect(err).ToNot(HaveOccurred())
 			Expect(oldRemoteKey.ID).To(Equal(oldKeyID))
@@ -328,9 +328,19 @@ func newAccessMgrFake() *accessMgrFake {
 }
 
 // Get implements AccessKeyManager.
-func (a *accessMgrFake) Get(ctx context.Context, id string, search string) (s3.AccessKey, error) {
+func (a *accessMgrFake) Get(ctx context.Context, id string) (s3.AccessKey, error) {
 	for _, v := range a.keys {
-		if v.ID == id || v.Name == search {
+		if v.ID == id {
+			return v, nil
+		}
+	}
+	return s3.AccessKey{}, s3.ErrKeyNotFound
+}
+
+// Lookup implements AccessKeyManager.
+func (a *accessMgrFake) Lookup(ctx context.Context, search string) (s3.AccessKey, error) {
+	for _, v := range a.keys {
+		if v.Name == search {
 			return v, nil
 		}
 	}

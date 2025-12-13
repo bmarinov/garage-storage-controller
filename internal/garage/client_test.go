@@ -165,13 +165,13 @@ func TestAccessKeyClient(t *testing.T) {
 		})
 	})
 	t.Run("Get", func(t *testing.T) {
-		name := "foo-canretrieve-key-bazz"
+		name := "foo-canretrieve-key-with-id"
 		created, err := sut.Create(t.Context(), name)
 		if err != nil {
 			t.Fatal(err)
 		}
 		t.Run("retrieve by id", func(t *testing.T) {
-			retrieved, err := sut.Get(t.Context(), created.ID, "")
+			retrieved, err := sut.Get(t.Context(), created.ID)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -179,19 +179,24 @@ func TestAccessKeyClient(t *testing.T) {
 				t.Errorf("expected id %s got %s", created.ID, retrieved.ID)
 			}
 		})
-		t.Run("retrieve by name", func(t *testing.T) {
-			retrieved, err := sut.Get(t.Context(), "", name)
+
+		t.Run("ID not found", func(t *testing.T) {
+			_, err := sut.Get(t.Context(), "foo123-unknown-key")
+			if err == nil || !errors.Is(err, s3.ErrKeyNotFound) {
+				t.Errorf("expected error %v got %v", s3.ErrKeyNotFound, err)
+			}
+		})
+	})
+	t.Run("Lookup", func(t *testing.T) {
+		name := "bar-canretrieve-key-bazz-by-name"
+		created, _ := sut.Create(t.Context(), name)
+		t.Run("retrieve existing by name match", func(t *testing.T) {
+			retrieved, err := sut.Lookup(t.Context(), name)
 			if err != nil {
 				t.Fatal(err)
 			}
 			if created.ID != retrieved.ID {
 				t.Errorf("expected ID %s got %s", created.ID, retrieved.ID)
-			}
-		})
-		t.Run("ID not found", func(t *testing.T) {
-			_, err := sut.Get(t.Context(), "foo123-unknown-key", "")
-			if err == nil || !errors.Is(err, s3.ErrKeyNotFound) {
-				t.Errorf("expected error %v got %v", s3.ErrKeyNotFound, err)
 			}
 		})
 	})
