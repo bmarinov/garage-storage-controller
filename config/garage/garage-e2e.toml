@@ -22,4 +22,3 @@ index = "index.html"
 
 [admin]
 api_bind_addr = "[::]:3903"
-metrics_token = "$(openssl rand -base64 32)"

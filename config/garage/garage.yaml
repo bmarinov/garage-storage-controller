@@ -13,7 +13,9 @@ spec:
       labels:
         app: garage
     spec:
-      terminationGracePeriodSeconds: 10
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
       volumes:
         - name: config
           configMap:

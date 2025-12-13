@@ -262,7 +262,41 @@ var _ = Describe("AccessKey Controller", func() {
 			By("comparing old and new IDs")
 			Expect(newKey.Status.ID).To(Not(Equal(oldKeyID)))
 		})
-		It("should reconcile after intermittent error on create", func() {
+		FIt("should reconcile after intermittent error on create", func() {
+			sut, externalAPI := setup()
+			accessKey := garagev1alpha1.AccessKey{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "reconcile-after-create",
+					Namespace: "default",
+				},
+				Spec: garagev1alpha1.AccessKeySpec{
+					SecretName: "f61xg",
+				},
+			}
+
+			By("external key created")
+			expectedName := namespacedResourceName(accessKey.ObjectMeta)
+			externalKey, err := externalAPI.Create(ctx, expectedName)
+			Expect(err).To(BeNil())
+
+			By("reconciling API resource")
+			Expect(k8sClient.Create(ctx, &accessKey)).To(Succeed())
+			resourceName := types.NamespacedName{
+				Namespace: accessKey.Namespace,
+				Name:      accessKey.Name}
+
+			_, err = sut.Reconcile(ctx, reconcile.Request{
+				NamespacedName: resourceName,
+			})
+			Expect(err).To(BeNil())
+
+			By("retrieving API resource")
+			var retrievedKey garagev1alpha1.AccessKey
+			Expect(k8sClient.Get(ctx, resourceName, &retrievedKey)).To(Succeed())
+
+			By("storing existing ID in status")
+			Expect(retrievedKey.Status.ID).To(Equal(externalKey.ID))
+
 			// error during reconcile
 			// key exists but no Status.ID
 			// setup test double or recreate state after AC error?
