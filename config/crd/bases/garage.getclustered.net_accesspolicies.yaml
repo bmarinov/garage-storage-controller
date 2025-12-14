@@ -45,9 +45,20 @@ spec:
               bucket:
                 description: Bucket is the name of the bucket resource.
                 type: string
+              permissions:
+                description: Permissions to grant the access key.
+                properties:
+                  owner:
+                    type: boolean
+                  read:
+                    type: boolean
+                  write:
+                    type: boolean
+                type: object
             required:
             - accessKey
             - bucket
+            - permissions
             type: object
           status:
             description: status defines the observed state of AccessPolicy

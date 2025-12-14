@@ -24,15 +24,17 @@ import (
 type AccessPolicySpec struct {
 	// AccessKey is the name of the resource in the namespace.
 	// +required
+	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="Value is immutable"
 	AccessKey string `json:"accessKey"`
 
 	// Bucket is the name of the bucket resource.
 	// +required
+	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="Value is immutable"
 	Bucket string `json:"bucket"`
 
 	// Permissions to grant the access key.
 	// +required
-	Permissions Permissions
+	Permissions Permissions `json:"permissions"`
 }
 
 type Permissions struct {

@@ -8,6 +8,7 @@ rules:
   - garage.getclustered.net
   resources:
   - accesskeys
+  - accesspolicies
   - buckets
   verbs:
   - create
@@ -21,6 +22,7 @@ rules:
   - garage.getclustered.net
   resources:
   - accesskeys/finalizers
+  - accesspolicies/finalizers
   - buckets/finalizers
   verbs:
   - update
@@ -28,6 +30,7 @@ rules:
   - garage.getclustered.net
   resources:
   - accesskeys/status
+  - accesspolicies/status
   - buckets/status
   verbs:
   - get
