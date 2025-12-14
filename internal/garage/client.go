@@ -131,8 +131,12 @@ func (a *AccessKeyClient) Lookup(ctx context.Context, search string) (s3.AccessK
 
 func (a *AccessKeyClient) get(ctx context.Context, id string, search string, retrieveSecret bool) (s3.AccessKey, error) {
 	params := url.Values{}
-	params.Add("id", id)
-	params.Add("search", search)
+	if id != "" {
+		params.Add("id", id)
+	}
+	if search != "" {
+		params.Add("search", search)
+	}
 	params.Add("showSecretKey", strconv.FormatBool(retrieveSecret))
 
 	const path = "/v2/GetKeyInfo"
@@ -147,6 +151,11 @@ func (a *AccessKeyClient) get(ctx context.Context, id string, search string, ret
 	if response.StatusCode != http.StatusOK {
 		if response.StatusCode == http.StatusNotFound {
 			return s3.AccessKey{}, fmt.Errorf("%w: id '%s'; search '%s'", s3.ErrKeyNotFound, id, search)
+		}
+		// TODO: inspect server side code, why bad request? workaround:
+		if response.StatusCode == http.StatusBadRequest &&
+			search != "" && id == "" {
+			return s3.AccessKey{}, fmt.Errorf("bad request looking for key with search term %s: %w", search, s3.ErrKeyNotFound)
 		}
 		return s3.AccessKey{}, fmt.Errorf("unexpected status code %d", response.StatusCode)
 	}

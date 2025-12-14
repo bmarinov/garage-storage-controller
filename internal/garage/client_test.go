@@ -205,5 +205,14 @@ func TestAccessKeyClient(t *testing.T) {
 				t.Error("should always return secret")
 			}
 		})
+		t.Run("no key match", func(t *testing.T) {
+			_, err := sut.Lookup(t.Context(), "key-with-name-definitely-doesnt-exist")
+			if err == nil {
+				t.Fatal("expected error got nil")
+			}
+			if !errors.Is(err, s3.ErrKeyNotFound) {
+				t.Errorf("unexpected error %v", err)
+			}
+		})
 	})
 }
