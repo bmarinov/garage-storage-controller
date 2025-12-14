@@ -44,15 +44,16 @@ spec:
             description: spec defines the desired state of AccessKey
             properties:
               neverExpires:
-                description: Set the access key to never expire.
+                description: NeverExpires is an experimental (draft) field. Set the
+                  access key to never expire.
                 type: boolean
+                x-kubernetes-validations:
+                - message: Value is immutable
+                  rule: self == oldSelf
               secretName:
                 description: The name of the secret that will be created to store
                   the credentials.
                 type: string
-                x-kubernetes-validations:
-                - message: Value is immutable
-                  rule: self == oldSelf
             required:
             - secretName
             type: object
@@ -126,6 +127,11 @@ spec:
               observedGeneration:
                 format: int64
                 type: integer
+              secretRef:
+                description: |-
+                  SecretName is the name of the secret created to store the access key.
+                  It holds the reference to the previously created secret on spec changes.
+                type: string
             type: object
         required:
         - spec

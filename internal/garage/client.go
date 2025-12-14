@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strconv"
 
 	"github.com/bmarinov/garage-storage-controller/internal/s3"
 )
@@ -120,8 +121,55 @@ func (a *AccessKeyClient) Create(ctx context.Context, keyName string) (s3.Access
 	}, nil
 }
 
-func (a *AccessKeyClient) Get(ctx context.Context, id string, search string) (s3.AccessKey, error) {
-	panic("unimplemented")
+func (a *AccessKeyClient) Get(ctx context.Context, id string) (s3.AccessKey, error) {
+	return a.get(ctx, id, "", true)
+}
+
+func (a *AccessKeyClient) Lookup(ctx context.Context, search string) (s3.AccessKey, error) {
+	return a.get(ctx, "", search, true)
+}
+
+func (a *AccessKeyClient) get(ctx context.Context, id string, search string, retrieveSecret bool) (s3.AccessKey, error) {
+	params := url.Values{}
+	if id != "" {
+		params.Add("id", id)
+	}
+	if search != "" {
+		params.Add("search", search)
+	}
+	params.Add("showSecretKey", strconv.FormatBool(retrieveSecret))
+
+	const path = "/v2/GetKeyInfo"
+
+	response, err := a.doRequest(ctx, http.MethodGet, path, &params, nil)
+	if err != nil {
+		return s3.AccessKey{}, fmt.Errorf("get key: %w", err)
+	}
+	defer func() {
+		_ = response.Body.Close()
+	}()
+	if response.StatusCode != http.StatusOK {
+		if response.StatusCode == http.StatusNotFound {
+			return s3.AccessKey{}, fmt.Errorf("%w: id '%s'; search '%s'", s3.ErrKeyNotFound, id, search)
+		}
+		// TODO: inspect server side code, why bad request? workaround:
+		if response.StatusCode == http.StatusBadRequest &&
+			search != "" && id == "" {
+			return s3.AccessKey{}, fmt.Errorf("bad request looking for key with search term %s: %w", search, s3.ErrKeyNotFound)
+		}
+		return s3.AccessKey{}, fmt.Errorf("unexpected status code %d", response.StatusCode)
+	}
+
+	result, err := unmarshalBody[AccessKeyResponse](response.Body)
+	if err != nil {
+		return s3.AccessKey{}, nil
+	}
+
+	return s3.AccessKey{
+		ID:     result.AccessKeyID,
+		Secret: result.SecretAccessKey,
+		Name:   result.Name,
+	}, nil
 }
 
 type BucketClient struct {
@@ -177,7 +225,7 @@ func (b *BucketClient) Get(ctx context.Context, globalAlias string) (s3.Bucket, 
 	}()
 	if resp.StatusCode != http.StatusOK {
 		if resp.StatusCode == http.StatusNotFound {
-			return s3.Bucket{}, fmt.Errorf("%w: %w", s3.ErrBucketNotFound, err)
+			return s3.Bucket{}, fmt.Errorf("%w: with alias %s", s3.ErrBucketNotFound, globalAlias)
 		}
 		return s3.Bucket{}, fmt.Errorf("unexpected status code %d", resp.StatusCode)
 	}
