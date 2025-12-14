@@ -25,6 +25,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/equality"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"k8s.io/apimachinery/pkg/runtime"
@@ -37,9 +38,9 @@ import (
 	"github.com/bmarinov/garage-storage-controller/internal/s3"
 )
 
-// AccessKeyReconciler reconciles a AccessKey object
+// AccessKeyReconciler reconciles an AccessKey object
 type AccessKeyReconciler struct {
-	client.Client
+	Client    client.Client
 	Scheme    *runtime.Scheme
 	accessKey AccessKeyManager
 }
@@ -64,7 +65,7 @@ type AccessKeyManager interface {
 
 func (r *AccessKeyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	var accessKey garagev1alpha1.AccessKey
-	err := r.Get(ctx, req.NamespacedName, &accessKey)
+	err := r.Client.Get(ctx, req.NamespacedName, &accessKey)
 	if err != nil {
 		if apierrors.IsNotFound(err) {
 			return ctrl.Result{}, nil
@@ -85,7 +86,7 @@ func (r *AccessKeyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	key.updateStatus()
 
 	if !equality.Semantic.DeepEqual(*orig, accessKey.Status) {
-		err = r.Status().Patch(ctx, &accessKey, client.Merge, client.FieldOwner(bucketControllerName))
+		err = r.Client.Status().Patch(ctx, &accessKey, client.Merge, client.FieldOwner(bucketControllerName))
 		return ctrl.Result{}, err
 	}
 
@@ -115,9 +116,37 @@ func (r *AccessKeyReconciler) reconcileAccessKey(ctx context.Context, key *Acces
 		key.MarkNotReady(KeySecretReady, "SecretSetupFailed", "Failed to set up secret for credentials: %v", err)
 		return err
 	}
+
+	if key.Object.Status.SecretName != "" && key.Object.Status.SecretName != key.Object.Spec.SecretName {
+		err = r.cleanupOldSecret(ctx, key.Object.Status.SecretName, key.Object.Namespace)
+		if err != nil {
+			logf.FromContext(ctx).Error(err, "cleaning up old secret on spec change", "accessKeyUID", key.Object.UID)
+			key.MarkNotReady(KeySecretReady, "SecretCleanupFailed",
+				"New secret created but failed to delete old secret %q: %v",
+				key.Object.Status.SecretName, err)
+
+			return err
+		}
+	}
+
 	key.Object.Status.SecretName = key.Object.Spec.SecretName
 	key.MarkSecretReady()
 
+	return nil
+}
+
+func (r *AccessKeyReconciler) cleanupOldSecret(ctx context.Context, secretName, namespace string) error {
+	oldSecret := corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      secretName,
+			Namespace: namespace,
+		},
+	}
+
+	err := r.Client.Delete(ctx, &oldSecret)
+	if err != nil && !apierrors.IsNotFound(err) {
+		return fmt.Errorf("deleting secret '%s/%s': %w", namespace, secretName, err)
+	}
 	return nil
 }
 

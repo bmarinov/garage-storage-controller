@@ -83,6 +83,7 @@ var _ = Describe("AccessKey Controller", func() {
 			By("Cleanup the specific resource instance AccessKey")
 			Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
 		})
+
 		It("should successfully reconcile the resource", func() {
 			sut, extAPI := setup()
 
@@ -301,12 +302,38 @@ var _ = Describe("AccessKey Controller", func() {
 			Expect(retrievedKey.Status.ID).To(Equal(externalKey.ID),
 				"should not create new key")
 		})
-		FIt("should replace secret on spec change", func() {
-			// TODO:
-			// change secret name in spec
-			// old secret deleted
-			// new secret created and data set
-			panic("implement")
+		It("should replace secret on spec change", func() {
+			sut, externalAPI := setup()
+			By("reconcile with original spec")
+			_, err := sut.Reconcile(ctx, reconcile.Request{NamespacedName: typeNamespacedName})
+			Expect(err).ToNot(HaveOccurred())
+			var accessKey garagev1alpha1.AccessKey
+			_ = k8sClient.Get(ctx, typeNamespacedName, &accessKey)
+
+			By("snapshot existing key and secret")
+			oldSecretID := types.NamespacedName{Name: accessKey.Spec.SecretName, Namespace: accessKey.Namespace}
+			var oldSecret corev1.Secret
+			Expect(k8sClient.Get(ctx, oldSecretID, &oldSecret)).To(Succeed())
+			existingExtKey, _ := externalAPI.Get(ctx, accessKey.Status.ID)
+
+			By("change secret name in spec")
+			accessKey.Spec.SecretName = "changed-name-workload-foo123"
+			Expect(k8sClient.Update(ctx, &accessKey)).To(Succeed())
+			_, err = sut.Reconcile(ctx, reconcile.Request{NamespacedName: typeNamespacedName})
+			Expect(err).ToNot(HaveOccurred())
+
+			By("new secret with existing external key created")
+			var newSecret corev1.Secret
+			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: accessKey.Spec.SecretName, Namespace: accessKey.Namespace}, &newSecret)).
+				To(Succeed())
+			_ = k8sClient.Get(ctx, typeNamespacedName, &accessKey)
+			Expect(accessKey.Status.ID).To(Equal(existingExtKey.ID), "key ID should not change")
+
+			Expect(newSecret.Data["accessKeyId"]).To(Equal(oldSecret.Data["accessKeyId"]))
+			Expect(newSecret.Data["secretAccessKey"]).To(Equal(oldSecret.Data["secretAccessKey"]))
+
+			By("old secret deleted")
+			Expect(k8sClient.Get(ctx, oldSecretID, &oldSecret)).To(Not(Succeed()), "old secret should no longer exist")
 		})
 		It("should reconcile from stale ready when external key missing", func() {
 			sut, externalAPI := setup()
