@@ -115,6 +115,7 @@ func (r *AccessKeyReconciler) reconcileAccessKey(ctx context.Context, key *Acces
 		key.MarkNotReady(KeySecretReady, "SecretSetupFailed", "Failed to set up secret for credentials: %v", err)
 		return err
 	}
+	key.Object.Status.SecretName = key.Object.Spec.SecretName
 	key.MarkSecretReady()
 
 	return nil

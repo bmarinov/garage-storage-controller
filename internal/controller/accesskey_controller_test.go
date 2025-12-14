@@ -134,7 +134,7 @@ var _ = Describe("AccessKey Controller", func() {
 
 				expectedKey := extAPI.keys[0]
 				g.Expect(accessKey.Status.ID).To(Equal(expectedKey.ID))
-				g.Expect(accessKey.Status.SecretName).To(Equal(expectedKey.Name))
+				g.Expect(accessKey.Status.SecretName).To(Equal(accessKey.Spec.SecretName))
 
 			}).Should(Succeed())
 		})
