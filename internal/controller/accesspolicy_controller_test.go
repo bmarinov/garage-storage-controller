@@ -22,6 +22,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
@@ -36,15 +37,47 @@ var _ = Describe("AccessPolicy Controller", func() {
 
 		ctx := context.Background()
 
-		typeNamespacedName := types.NamespacedName{
+		accessKeyObjID := types.NamespacedName{
+			Name:      "foo-key",
+			Namespace: "default",
+		}
+		bucketObjID := types.NamespacedName{
+			Name:      "foo-bucket",
+			Namespace: "default",
+		}
+
+		policyObjID := types.NamespacedName{
 			Name:      resourceName,
 			Namespace: "default",
 		}
 		accesspolicy := &garagev1alpha1.AccessPolicy{}
 
 		BeforeEach(func() {
-			By("creating the custom resource for the Kind AccessPolicy")
-			err := k8sClient.Get(ctx, typeNamespacedName, accesspolicy)
+			By("creating the base custom resources")
+
+			key := garagev1alpha1.AccessKey{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      accessKeyObjID.Name,
+					Namespace: accessKeyObjID.Namespace,
+				},
+				Spec: garagev1alpha1.AccessKeySpec{
+					SecretName: "blap-secret",
+				},
+			}
+			bucket := garagev1alpha1.Bucket{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      bucketObjID.Name,
+					Namespace: bucketObjID.Namespace,
+				},
+				Spec: garagev1alpha1.BucketSpec{
+					MaxSize: 353,
+					Name:    "bucketname-docs",
+				},
+			}
+			Expect(k8sClient.Create(ctx, &key)).To(Succeed())
+			Expect(k8sClient.Create(ctx, &bucket)).To(Succeed())
+
+			err := k8sClient.Get(ctx, policyObjID, accesspolicy)
 			if err != nil && errors.IsNotFound(err) {
 				resource := &garagev1alpha1.AccessPolicy{
 					ObjectMeta: metav1.ObjectMeta{
@@ -52,7 +85,13 @@ var _ = Describe("AccessPolicy Controller", func() {
 						Namespace: "default",
 					},
 					Spec: garagev1alpha1.AccessPolicySpec{
-						// AccessKey: ,
+						AccessKey: key.Name,
+						Bucket:    bucket.Name,
+						Permissions: garagev1alpha1.Permissions{
+							Read:  true,
+							Write: true,
+							Owner: false,
+						},
 					},
 				}
 				Expect(k8sClient.Create(ctx, resource)).To(Succeed())
@@ -61,23 +100,52 @@ var _ = Describe("AccessPolicy Controller", func() {
 
 		AfterEach(func() {
 			resource := &garagev1alpha1.AccessPolicy{}
-			err := k8sClient.Get(ctx, typeNamespacedName, resource)
+			err := k8sClient.Get(ctx, policyObjID, resource)
 			Expect(err).NotTo(HaveOccurred())
 
-			By("Cleanup the specific resource instance AccessPolicy")
+			By("Cleanup the specific resource instances")
 			Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
+
+			// TODO: clean up:
+			var bucket garagev1alpha1.Bucket
+			Expect(k8sClient.Get(ctx, bucketObjID, &bucket)).To(Succeed())
+			Expect(err).NotTo(HaveOccurred())
+			Expect(k8sClient.Delete(ctx, &bucket)).To(Succeed())
+
+			var accessKey garagev1alpha1.AccessKey
+			Expect(k8sClient.Get(ctx, accessKeyObjID, &accessKey)).To(Succeed())
+			Expect(err).NotTo(HaveOccurred())
+			Expect(k8sClient.Delete(ctx, &accessKey)).To(Succeed())
 		})
 		It("should successfully reconcile the resource", func() {
-			By("Reconciling the created resource")
+			By("Bucket and key status Ready")
+			var bucket garagev1alpha1.Bucket
+			Expect(k8sClient.Get(ctx, bucketObjID, &bucket)).To(Succeed())
+
+			b := Bucket{Object: &bucket}
+			b.MarkBucketReady()
+
+			var accessKey garagev1alpha1.AccessKey
+			Expect(k8sClient.Get(ctx, accessKeyObjID, &accessKey)).To(Succeed())
+			k := AccessKey{Object: &accessKey}
+			k.MarkAccessKeyReady()
+
+			By("Reconciling the policy resource")
 			controllerReconciler := &AccessPolicyReconciler{
 				Client: k8sClient,
 				Scheme: k8sClient.Scheme(),
 			}
 
 			_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
-				NamespacedName: typeNamespacedName,
+				NamespacedName: policyObjID,
 			})
 			Expect(err).NotTo(HaveOccurred())
+
+			By("Policy is Ready")
+			var policy garagev1alpha1.AccessPolicy
+			Expect(k8sClient.Get(ctx, policyObjID, &policy)).To(Succeed())
+			policyReady := meta.FindStatusCondition(policy.Status.Conditions, Ready)
+			Expect(policyReady.Status).To(Equal(metav1.ConditionTrue))
 		})
 	})
 })
