@@ -128,10 +128,12 @@ func (r *AccessKeyReconciler) ensureExternalKey(ctx context.Context, resource ga
 	if resource.Status.ID != "" {
 		existing, err := r.accessKey.Get(ctx, resource.Status.ID)
 		if err != nil {
-			panic("implement")
-			// if errors.Is(err, s3.ErrAccessKeyNotFound) {
-
-			// }
+			if errors.Is(err, s3.ErrKeyNotFound) {
+				logger.Info("ensuring external key: none found with stale Status.ID, recreating", "keyID", resource.Status.ID, "err", err)
+				return r.accessKey.Create(ctx, externalKeyName)
+			} else {
+				return s3.AccessKey{}, fmt.Errorf("verifying existing key: %w", err)
+			}
 		}
 
 		return existing, err

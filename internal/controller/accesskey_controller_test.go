@@ -190,7 +190,7 @@ var _ = Describe("AccessKey Controller", func() {
 			Expect(secretRes.OwnerReferences).To(HaveLen(1))
 			Expect(secretRes.OwnerReferences[0]).To(Equal(expectedRef))
 		})
-		It("should create different names when recreating AccessKey resources", func() {
+		It("should generate different key names when recreating AccessKey resources", func() {
 			sut, externalAPI := setup()
 
 			By("creating the old resource")
@@ -264,7 +264,7 @@ var _ = Describe("AccessKey Controller", func() {
 			By("comparing old and new IDs")
 			Expect(newKey.Status.ID).To(Not(Equal(oldKeyID)))
 		})
-		It("should reconcile after intermittent error on create", func() {
+		It("should reconcile after transient error on create", func() {
 			sut, externalAPI := setup()
 			accessKey := garagev1alpha1.AccessKey{
 				ObjectMeta: metav1.ObjectMeta{
@@ -300,16 +300,66 @@ var _ = Describe("AccessKey Controller", func() {
 			By("storing existing external key ID in status")
 			Expect(retrievedKey.Status.ID).To(Equal(externalKey.ID),
 				"should not create new key")
-
-			// error during reconcile
-			// key exists but no Status.ID
-			// setup test double or recreate state after AC error?
 		})
-		It("should reconcile with stale status and existing k8s secret", func() {
-			// create secret
-			// fail on patch
-			// restart recon
-			// should not create duplicate secrets
+		FIt("should replace secret on spec change", func() {
+			// TODO:
+			// change secret name in spec
+			// old secret deleted
+			// new secret created and data set
+			panic("implement")
+		})
+		It("should reconcile from stale ready when external key missing", func() {
+			sut, externalAPI := setup()
+			accessKey := garagev1alpha1.AccessKey{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "key-went-poof",
+					Namespace: "default",
+				},
+				Spec: garagev1alpha1.AccessKeySpec{
+					SecretName: "5zbrapp",
+				},
+			}
+			Expect(k8sClient.Create(ctx, &accessKey)).To(Succeed())
+
+			resourceName := types.NamespacedName{
+				Namespace: accessKey.Namespace,
+				Name:      accessKey.Name,
+			}
+			_, err := sut.Reconcile(ctx, reconcile.Request{
+				NamespacedName: resourceName,
+			})
+			Expect(err).ToNot(HaveOccurred())
+
+			By("deleting external key out of band")
+			// TODO: can use API client here:
+			externalAPI.keys = []s3.AccessKey{}
+
+			By("changing spec and reconciling")
+			Expect(k8sClient.Get(ctx, resourceName, &accessKey)).To(Succeed())
+			newSecretName := "changed-secret-321"
+			accessKey.Spec.SecretName = newSecretName
+			Expect(k8sClient.Update(ctx, &accessKey)).To(Succeed())
+			_, err = sut.Reconcile(ctx, reconcile.Request{
+				NamespacedName: resourceName,
+			})
+			Expect(err).ToNot(HaveOccurred())
+
+			By("new access key ID stored in status")
+			_ = k8sClient.Get(ctx, resourceName, &accessKey)
+			newKey, err := externalAPI.Get(ctx, accessKey.Status.ID)
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(accessKey.Status.ID).To(Equal(newKey.ID))
+
+			By("access key in namespace secret")
+			var newSecret corev1.Secret
+			Expect(k8sClient.Get(ctx,
+				types.NamespacedName{Namespace: accessKey.Namespace, Name: accessKey.Spec.SecretName},
+				&newSecret)).
+				To(Succeed())
+
+			Expect(string(newSecret.Data["accessKeyId"])).To(Equal(newKey.ID))
+			Expect(string(newSecret.Data["secretAccessKey"])).To(Equal(newKey.Secret))
 		})
 		// more tests:
 		// - naming conflict with existing corev1 secret

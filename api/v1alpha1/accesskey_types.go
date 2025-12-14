@@ -22,18 +22,17 @@ import (
 
 // AccessKeySpec defines the desired state of AccessKey
 type AccessKeySpec struct {
-
-	// Set the access key to never expire.
-	// +optional
-	NeverExpires bool `json:"neverExpires"`
-
-	// TODO: TBD: requires credential rotation
-	// Expiration time.Time
-
 	// The name of the secret that will be created to store the credentials.
 	// +kubebuilder:validation:Required
-	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="Value is immutable"
 	SecretName string `json:"secretName"`
+
+	// NeverExpires is an experimental (draft) field. Set the access key to never expire.
+	// +optional
+	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="Value is immutable"
+	NeverExpires bool `json:"neverExpires,omitempty"`
+
+	// TODO: TBD: viability without credential rotation?
+	// Expiration time.Time
 }
 
 // AccessKeyStatus defines the observed state of AccessKey.
@@ -52,6 +51,8 @@ type AccessKeyStatus struct {
 	ID string `json:"id,omitempty"`
 
 	// SecretName is the name of the secret created to store the access key.
+	// It holds the reference to the previously created secret on spec changes.
+	// +optional
 	SecretName string `json:"secretRef"`
 }
 
