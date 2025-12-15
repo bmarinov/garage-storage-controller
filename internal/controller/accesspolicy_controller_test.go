@@ -69,6 +69,7 @@ var _ = Describe("AccessPolicy Controller", func() {
 				}
 				Expect(k8sClient.Create(ctx, &b)).To(Succeed())
 				markBucketReady(&b)
+				updateBucketReadyCondition(&b)
 				Expect(k8sClient.Status().Patch(ctx, &b, client.Merge, client.FieldOwner(bucketControllerName))).To(Succeed())
 			}
 			if keyExists {
