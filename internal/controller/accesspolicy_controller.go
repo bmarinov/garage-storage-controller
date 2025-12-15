@@ -43,14 +43,19 @@ type PermissionClient interface {
 
 // AccessPolicyReconciler reconciles a AccessPolicy object
 type AccessPolicyReconciler struct {
-	client client.Client
-	scheme *runtime.Scheme
+	client      client.Client
+	scheme      *runtime.Scheme
+	adminClient PermissionClient
 }
 
-func NewAccessPolicyReconciler(c client.Client, scheme *runtime.Scheme) *AccessPolicyReconciler {
+func NewAccessPolicyReconciler(c client.Client,
+	scheme *runtime.Scheme,
+	ac PermissionClient,
+) *AccessPolicyReconciler {
 	return &AccessPolicyReconciler{
-		client: c,
-		scheme: scheme,
+		client:      c,
+		scheme:      scheme,
+		adminClient: ac,
 	}
 }
 
@@ -118,12 +123,12 @@ func (r *AccessPolicyReconciler) SetupWithManager(mgr ctrl.Manager) error {
 func (r *AccessPolicyReconciler) reconcilePolicy(ctx context.Context, policy *garagev1alpha1.AccessPolicy) error {
 	var errs []error
 
-	err := r.checkBucket(ctx, policy)
+	bucket, err := r.checkBucket(ctx, policy)
 	if err != nil {
 		errs = append(errs, err)
 	}
 
-	err = r.checkAccessKey(ctx, policy)
+	accessKey, err := r.checkAccessKey(ctx, policy)
 	if err != nil {
 		errs = append(errs, err)
 	}
@@ -134,10 +139,18 @@ func (r *AccessPolicyReconciler) reconcilePolicy(ctx context.Context, policy *ga
 
 	// Happy path from here:
 	// client.CreatePolicy(foo)
+	err = r.adminClient.SetPermissions(ctx, accessKey.Status.ID, bucket.Status.BucketID,
+		s3.Permissions{
+			Read:  policy.Spec.Permissions.Read,
+			Write: policy.Spec.Permissions.Write,
+			Owner: policy.Spec.Permissions.Owner,
+		})
+
 	panic("implement")
 }
 
-func (r *AccessPolicyReconciler) checkBucket(ctx context.Context, policy *garagev1alpha1.AccessPolicy) error {
+func (r *AccessPolicyReconciler) checkBucket(ctx context.Context,
+	policy *garagev1alpha1.AccessPolicy) (*garagev1alpha1.Bucket, error) {
 	var bucket garagev1alpha1.Bucket
 	err := r.client.Get(ctx,
 		types.NamespacedName{Namespace: policy.Namespace, Name: policy.Spec.Bucket},
@@ -151,9 +164,9 @@ func (r *AccessPolicyReconciler) checkBucket(ctx context.Context, policy *garage
 				PolicyBucketReady,
 				ReasonBucketMissing,
 				"Bucket not found in namespace: %v", err)
-			return fmt.Errorf("retrieve bucket %s: %w", policy.Spec.Bucket, err)
+			return nil, fmt.Errorf("retrieve bucket %s: %w", policy.Spec.Bucket, err)
 		} else {
-			return fmt.Errorf("unexpected error getting bucket: %w", err)
+			return nil, fmt.Errorf("unexpected error getting bucket: %w", err)
 		}
 	} else {
 		bucketCond := meta.FindStatusCondition(bucket.Status.Conditions, Ready)
@@ -163,16 +176,19 @@ func (r *AccessPolicyReconciler) checkBucket(ctx context.Context, policy *garage
 				message = bucketCond.Message
 			}
 			markPolicyConditionNotReady(policy, PolicyBucketReady, ReasonDependenciesNotReady, "%s", message)
-			return fmt.Errorf("bucket not ready: %w", errDependencyNotReady)
+			return nil, fmt.Errorf("bucket not ready: %w", errDependencyNotReady)
 		} else {
 			// TODO: bucket cond ready
 		}
 	}
 
-	return nil
+	return &bucket, nil
 }
 
-func (r *AccessPolicyReconciler) checkAccessKey(ctx context.Context, policy *garagev1alpha1.AccessPolicy) error {
+func (r *AccessPolicyReconciler) checkAccessKey(
+	ctx context.Context,
+	policy *garagev1alpha1.AccessPolicy,
+) (*garagev1alpha1.AccessKey, error) {
 	var accessKey garagev1alpha1.AccessKey
 	err := r.client.Get(ctx,
 		types.NamespacedName{Namespace: policy.Namespace, Name: policy.Spec.AccessKey},
@@ -184,9 +200,9 @@ func (r *AccessPolicyReconciler) checkAccessKey(ctx context.Context, policy *gar
 				PolicyAccessKeyReady,
 				ReasonAccessKeyMissing,
 				"Access key not found in namespace: %v", err)
-			return fmt.Errorf("retrieve access key %s: %w", policy.Spec.AccessKey, err)
+			return nil, fmt.Errorf("retrieve access key %s: %w", policy.Spec.AccessKey, err)
 		} else {
-			return fmt.Errorf("unexpected error gettig access key: %w", err)
+			return nil, fmt.Errorf("unexpected error gettig access key: %w", err)
 		}
 	} else {
 		accessKeyCond := meta.FindStatusCondition(accessKey.Status.Conditions, Ready)
@@ -196,10 +212,10 @@ func (r *AccessPolicyReconciler) checkAccessKey(ctx context.Context, policy *gar
 				message = accessKeyCond.Message
 			}
 			markPolicyConditionNotReady(policy, PolicyAccessKeyReady, ReasonDependenciesNotReady, "%s", message)
-			return fmt.Errorf("access key not ready: %w", errDependencyNotReady)
+			return nil, fmt.Errorf("access key not ready: %w", errDependencyNotReady)
 		} else {
 			// TODO: access key cond ready
 		}
 	}
-	return nil
+	return &accessKey, nil
 }

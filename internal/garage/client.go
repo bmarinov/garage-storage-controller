@@ -16,6 +16,7 @@ import (
 type AdminClient struct {
 	*BucketClient
 	*AccessKeyClient
+	*PermissionClient
 }
 
 func NewClient(apiAddr string, token string) *AdminClient {
@@ -30,6 +31,9 @@ func NewClient(apiAddr string, token string) *AdminClient {
 			&baseClient,
 		},
 		AccessKeyClient: &AccessKeyClient{
+			&baseClient,
+		},
+		PermissionClient: &PermissionClient{
 			&baseClient,
 		},
 	}
@@ -273,6 +277,17 @@ func (b *BucketClient) Update(ctx context.Context, id string, quotas s3.Quotas) 
 	}
 
 	return nil
+}
+
+type PermissionClient struct {
+	*adminAPIHttpClient
+}
+
+func (p *PermissionClient) SetPermissions(ctx context.Context,
+	keyID string,
+	bucketID string,
+	permissions s3.Permissions) error {
+	panic("unimplemented")
 }
 
 func unmarshalBody[T any](body io.ReadCloser) (T, error) {

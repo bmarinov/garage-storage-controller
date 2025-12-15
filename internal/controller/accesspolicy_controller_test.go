@@ -29,6 +29,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	garagev1alpha1 "github.com/bmarinov/garage-storage-controller/api/v1alpha1"
+	"github.com/bmarinov/garage-storage-controller/internal/s3"
 	"github.com/bmarinov/garage-storage-controller/internal/tests/fixture"
 )
 
@@ -102,7 +103,7 @@ var _ = Describe("AccessPolicy Controller", func() {
 			Expect(k8sClient.Create(ctx, &p)).To(Succeed())
 			objID := types.NamespacedName{Namespace: namespace, Name: p.Name}
 
-			sut := NewAccessPolicyReconciler(k8sClient, k8sClient.Scheme())
+			sut := NewAccessPolicyReconciler(k8sClient, k8sClient.Scheme(), &permissionClientStub{})
 			_, err := sut.Reconcile(ctx,
 				reconcile.Request{NamespacedName: objID})
 			Expect(err).ToNot(HaveOccurred(), "should reschedule and not err")
@@ -175,7 +176,7 @@ var _ = Describe("AccessPolicy Controller", func() {
 			objID := types.NamespacedName{Name: p.Name,
 				Namespace: p.Namespace}
 
-			sut := NewAccessPolicyReconciler(k8sClient, k8sClient.Scheme())
+			sut := NewAccessPolicyReconciler(k8sClient, k8sClient.Scheme(), &permissionClientStub{})
 			_, err := sut.Reconcile(ctx,
 				reconcile.Request{NamespacedName: objID})
 			Expect(err).ToNot(HaveOccurred())
@@ -196,3 +197,14 @@ var _ = Describe("AccessPolicy Controller", func() {
 		})
 	})
 })
+
+type permissionClientStub struct {
+}
+
+// SetPermissions implements PermissionClient.
+func (p *permissionClientStub) SetPermissions(ctx context.Context, keyID string, bucketID string, permissions s3.Permissions) error {
+
+	return nil
+}
+
+var _ PermissionClient = &permissionClientStub{}
