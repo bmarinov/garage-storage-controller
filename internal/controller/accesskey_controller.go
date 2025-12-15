@@ -26,7 +26,6 @@ import (
 	"k8s.io/apimachinery/pkg/api/equality"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -40,15 +39,15 @@ import (
 
 // AccessKeyReconciler reconciles an AccessKey object
 type AccessKeyReconciler struct {
-	Client    client.Client
-	Scheme    *runtime.Scheme
+	client    client.Client
+	scheme    *runtime.Scheme
 	accessKey AccessKeyManager
 }
 
 func NewAccessKeyReconciler(c client.Client, s *runtime.Scheme, keyMgr AccessKeyManager) *AccessKeyReconciler {
 	return &AccessKeyReconciler{
-		Client:    c,
-		Scheme:    s,
+		client:    c,
+		scheme:    s,
 		accessKey: keyMgr,
 	}
 }
@@ -65,13 +64,15 @@ type AccessKeyManager interface {
 
 func (r *AccessKeyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	var accessKey garagev1alpha1.AccessKey
-	err := r.Client.Get(ctx, req.NamespacedName, &accessKey)
+	err := r.client.Get(ctx, req.NamespacedName, &accessKey)
 	if err != nil {
 		if apierrors.IsNotFound(err) {
 			return ctrl.Result{}, nil
 		}
 		return ctrl.Result{}, err
 	}
+
+	// TODO: finalizer
 
 	orig := accessKey.Status.DeepCopy()
 
@@ -86,7 +87,7 @@ func (r *AccessKeyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	key.updateStatus()
 
 	if !equality.Semantic.DeepEqual(*orig, accessKey.Status) {
-		err = r.Client.Status().Patch(ctx, &accessKey, client.Merge, client.FieldOwner(bucketControllerName))
+		err = r.client.Status().Patch(ctx, &accessKey, client.Merge, client.FieldOwner(bucketControllerName))
 		return ctrl.Result{}, err
 	}
 
@@ -95,7 +96,7 @@ func (r *AccessKeyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 
 func (r *AccessKeyReconciler) reconcileAccessKey(ctx context.Context, key *AccessKey) error {
 	if key.Object.Status.ObservedGeneration == key.Object.Generation &&
-		key.AccessKeyCondition().Status == v1.ConditionTrue &&
+		key.AccessKeyCondition().Status == metav1.ConditionTrue &&
 		key.Object.Status.ID != "" {
 		// object exists
 		return nil
@@ -103,13 +104,16 @@ func (r *AccessKeyReconciler) reconcileAccessKey(ctx context.Context, key *Acces
 
 	externalKey, err := r.ensureExternalKey(ctx, *key.Object)
 	if err != nil {
-		key.MarkNotReady(AccessKeyReady, "AccessKeyUnknown", "Failed to verify external access key: %v", err)
+		markAccessKeyNotReady(
+			key.Object,
+			"AccessKeyUnknown",
+			"Failed to verify external access key: %v", err)
 
 		return err
 	}
 
 	key.Object.Status.ID = externalKey.ID
-	key.MarkAccessKeyReady()
+	markAccessKeyReady(key.Object)
 
 	err = r.ensureSecret(ctx, *key.Object, externalKey.Secret)
 	if err != nil {
@@ -143,7 +147,7 @@ func (r *AccessKeyReconciler) cleanupOldSecret(ctx context.Context, secretName, 
 		},
 	}
 
-	err := r.Client.Delete(ctx, &oldSecret)
+	err := r.client.Delete(ctx, &oldSecret)
 	if err != nil && !apierrors.IsNotFound(err) {
 		return fmt.Errorf("deleting secret '%s/%s': %w", namespace, secretName, err)
 	}
@@ -186,7 +190,7 @@ func (r *AccessKeyReconciler) ensureSecret(ctx context.Context,
 	parent garagev1alpha1.AccessKey,
 	secret string) error {
 	secretRes := corev1.Secret{
-		ObjectMeta: v1.ObjectMeta{
+		ObjectMeta: metav1.ObjectMeta{
 			Name:      parent.Spec.SecretName,
 			Namespace: parent.Namespace,
 			Labels: map[string]string{
@@ -197,12 +201,12 @@ func (r *AccessKeyReconciler) ensureSecret(ctx context.Context,
 		Data: map[string][]byte{},
 	}
 
-	err := controllerutil.SetControllerReference(&parent, &secretRes, r.Scheme)
+	err := controllerutil.SetControllerReference(&parent, &secretRes, r.scheme)
 	if err != nil {
 		return fmt.Errorf("setting owner reference on secret: %w", err)
 	}
 
-	_, err = controllerutil.CreateOrUpdate(ctx, r.Client, &secretRes, func() error {
+	_, err = controllerutil.CreateOrUpdate(ctx, r.client, &secretRes, func() error {
 		secretRes.Data = map[string][]byte{
 			"accessKeyId":     []byte(parent.Status.ID),
 			"secretAccessKey": []byte(secret),
@@ -214,7 +218,7 @@ func (r *AccessKeyReconciler) ensureSecret(ctx context.Context,
 }
 
 // namespacedResourceName returns a key name including the namespace and a suffix from the UID hash.
-func namespacedResourceName(meta v1.ObjectMeta) string {
+func namespacedResourceName(meta metav1.ObjectMeta) string {
 	hash := sha256.Sum256([]byte(meta.UID))
 	return fmt.Sprintf("%s-%s-%x", meta.Namespace, meta.Name, hash[:8])
 }

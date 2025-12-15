@@ -81,6 +81,8 @@ func (r *BucketReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 		return ctrl.Result{}, err
 	}
 
+	updateBucketReadyCondition(b.Object)
+
 	if !equality.Semantic.DeepEqual(*orig, bucket.Status) {
 		err = r.Status().Patch(ctx, &bucket, client.Merge, client.FieldOwner(bucketControllerName))
 		return ctrl.Result{}, err

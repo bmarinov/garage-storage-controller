@@ -29,3 +29,9 @@ type AccessKey struct {
 	Secret string
 	Name   string
 }
+
+type Permissions struct {
+	Read  bool
+	Write bool
+	Owner bool
+}

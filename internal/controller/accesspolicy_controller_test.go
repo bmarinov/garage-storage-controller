@@ -21,131 +21,176 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	"k8s.io/apimachinery/pkg/api/errors"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-
 	garagev1alpha1 "github.com/bmarinov/garage-storage-controller/api/v1alpha1"
+	"github.com/bmarinov/garage-storage-controller/internal/tests/fixture"
 )
 
 var _ = Describe("AccessPolicy Controller", func() {
 	Context("When reconciling a resource", func() {
-		const resourceName = "test-resource"
-
 		ctx := context.Background()
-
-		accessKeyObjID := types.NamespacedName{
-			Name:      "foo-key",
-			Namespace: "default",
-		}
-		bucketObjID := types.NamespacedName{
-			Name:      "foo-bucket",
-			Namespace: "default",
-		}
-
-		policyObjID := types.NamespacedName{
-			Name:      resourceName,
-			Namespace: "default",
-		}
-		accesspolicy := &garagev1alpha1.AccessPolicy{}
+		// the namespace for the test
+		var namespace string
 
 		BeforeEach(func() {
-			By("creating the base custom resources")
+			By("setting up namespace")
+			namespace = fixture.RandAlpha(10)
 
-			key := garagev1alpha1.AccessKey{
+			testNamespace := corev1.Namespace{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:      accessKeyObjID.Name,
-					Namespace: accessKeyObjID.Namespace,
-				},
-				Spec: garagev1alpha1.AccessKeySpec{
-					SecretName: "blap-secret",
+					Name: namespace,
 				},
 			}
-			bucket := garagev1alpha1.Bucket{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      bucketObjID.Name,
-					Namespace: bucketObjID.Namespace,
-				},
-				Spec: garagev1alpha1.BucketSpec{
-					MaxSize: 353,
-					Name:    "bucketname-docs",
-				},
-			}
-			Expect(k8sClient.Create(ctx, &key)).To(Succeed())
-			Expect(k8sClient.Create(ctx, &bucket)).To(Succeed())
-
-			err := k8sClient.Get(ctx, policyObjID, accesspolicy)
-			if err != nil && errors.IsNotFound(err) {
-				resource := &garagev1alpha1.AccessPolicy{
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      resourceName,
-						Namespace: "default",
-					},
-					Spec: garagev1alpha1.AccessPolicySpec{
-						AccessKey: key.Name,
-						Bucket:    bucket.Name,
-						Permissions: garagev1alpha1.Permissions{
-							Read:  true,
-							Write: true,
-							Owner: false,
-						},
-					},
-				}
-				Expect(k8sClient.Create(ctx, resource)).To(Succeed())
-			}
+			Expect(k8sClient.Create(ctx, &testNamespace)).To(Succeed())
 		})
 
 		AfterEach(func() {
-			resource := &garagev1alpha1.AccessPolicy{}
-			err := k8sClient.Get(ctx, policyObjID, resource)
-			Expect(err).NotTo(HaveOccurred())
-
-			By("Cleanup the specific resource instances")
-			Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
-
-			// TODO: clean up:
-			var bucket garagev1alpha1.Bucket
-			Expect(k8sClient.Get(ctx, bucketObjID, &bucket)).To(Succeed())
-			Expect(err).NotTo(HaveOccurred())
-			Expect(k8sClient.Delete(ctx, &bucket)).To(Succeed())
-
-			var accessKey garagev1alpha1.AccessKey
-			Expect(k8sClient.Get(ctx, accessKeyObjID, &accessKey)).To(Succeed())
-			Expect(err).NotTo(HaveOccurred())
-			Expect(k8sClient.Delete(ctx, &accessKey)).To(Succeed())
+			ns := corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: namespace}}
+			Expect(k8sClient.Delete(ctx, &ns)).To(Succeed())
 		})
-		It("should successfully reconcile the resource", func() {
-			By("Bucket and key status Ready")
-			var bucket garagev1alpha1.Bucket
-			Expect(k8sClient.Get(ctx, bucketObjID, &bucket)).To(Succeed())
 
-			b := Bucket{Object: &bucket}
-			b.MarkBucketReady()
+		FDescribeTable("missing resource dependencies", func(
+			bucketExists, keyExists bool,
+			expectedReason string,
+		) {
+			bucketName := "bucket-a"
+			accessKeyName := "key-b"
 
-			var accessKey garagev1alpha1.AccessKey
-			Expect(k8sClient.Get(ctx, accessKeyObjID, &accessKey)).To(Succeed())
-			k := AccessKey{Object: &accessKey}
-			k.MarkAccessKeyReady()
+			if bucketExists {
+				b := garagev1alpha1.Bucket{
+					ObjectMeta: metav1.ObjectMeta{Name: bucketName, Namespace: namespace},
+					Spec:       garagev1alpha1.BucketSpec{Name: "blap-bucket3132"},
+				}
+				Expect(k8sClient.Create(ctx, &b)).To(Succeed())
+				markBucketReady(&b)
+				Expect(k8sClient.Status().Patch(ctx, &b, client.Merge, client.FieldOwner(bucketControllerName))).To(Succeed())
+			}
+			if keyExists {
+				k := garagev1alpha1.AccessKey{
+					ObjectMeta: metav1.ObjectMeta{Name: accessKeyName, Namespace: namespace},
+					Spec:       garagev1alpha1.AccessKeySpec{SecretName: "zzz-ns-secret"},
+				}
+				Expect(k8sClient.Create(ctx, &k)).To(Succeed())
 
-			By("Reconciling the policy resource")
-			controllerReconciler := &AccessPolicyReconciler{
-				Client: k8sClient,
-				Scheme: k8sClient.Scheme(),
+				markAccessKeyReady(&k)
+				markSecretReady(&k)
+				updateAccessKeyCondition(&k)
+				Expect(k8sClient.Status().Patch(ctx, &k, client.Merge, client.FieldOwner(bucketControllerName))).To(Succeed())
+
 			}
 
-			_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
-				NamespacedName: policyObjID,
-			})
-			Expect(err).NotTo(HaveOccurred())
+			p := garagev1alpha1.AccessPolicy{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "testpolicy",
+					Namespace: namespace,
+				},
+				Spec: garagev1alpha1.AccessPolicySpec{
+					AccessKey: accessKeyName,
+					Bucket:    bucketName,
+					Permissions: garagev1alpha1.Permissions{
+						Read: true,
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, &p)).To(Succeed())
+			objID := types.NamespacedName{Namespace: namespace, Name: p.Name}
 
-			By("Policy is Ready")
+			sut := NewAccessPolicyReconciler(k8sClient, k8sClient.Scheme())
+			_, err := sut.Reconcile(ctx,
+				reconcile.Request{NamespacedName: objID})
+			Expect(err).ToNot(HaveOccurred(), "should reschedule and not err")
+
 			var policy garagev1alpha1.AccessPolicy
-			Expect(k8sClient.Get(ctx, policyObjID, &policy)).To(Succeed())
-			policyReady := meta.FindStatusCondition(policy.Status.Conditions, Ready)
-			Expect(policyReady.Status).To(Equal(metav1.ConditionTrue))
+			_ = k8sClient.Get(ctx, objID, &policy)
+
+			readyCond := meta.FindStatusCondition(policy.Status.Conditions, Ready)
+			Expect(readyCond.Status).To(Equal(metav1.ConditionFalse), "Ready condition has unexpected status")
+			Expect(readyCond.Reason).To(Equal(expectedReason))
+		},
+			Entry("bucket missing", false, true, ReasonBucketMissing),
+			Entry("key missing", true, false, ReasonAccessKeyMissing),
+		)
+		DescribeTable("Ready state in dependencies", func(
+			bucketReady, keyReady bool,
+			expectedStatus metav1.ConditionStatus,
+		) {
+			bucketName := "foo-bucket-123"
+			accessKeyName := "read-write-key-123"
+
+			By("creating upstream resources")
+			b := garagev1alpha1.Bucket{
+				ObjectMeta: metav1.ObjectMeta{Name: bucketName, Namespace: namespace},
+				Spec:       garagev1alpha1.BucketSpec{Name: "blap-bucket3132"},
+			}
+			Expect(k8sClient.Create(ctx, &b)).To(Succeed())
+
+			if bucketReady {
+				markBucketReady(&b)
+			} else {
+				markBucketNotReady(&b, "FooUnknown", "Not ready in test")
+			}
+			updateBucketReadyCondition(&b)
+			Expect(k8sClient.Status().Patch(ctx, &b, client.Merge, client.FieldOwner(bucketControllerName))).To(Succeed())
+
+			k := garagev1alpha1.AccessKey{
+				ObjectMeta: metav1.ObjectMeta{Name: accessKeyName, Namespace: namespace},
+				Spec:       garagev1alpha1.AccessKeySpec{SecretName: "zzz-ns-secret"},
+			}
+			Expect(k8sClient.Create(ctx, &k)).To(Succeed())
+
+			if keyReady {
+				markAccessKeyReady(&k)
+				markSecretReady(&k)
+			} else {
+				markAccessKeyNotReady(&k, "Unknown", "Foo bar test")
+			}
+			updateAccessKeyCondition(&k)
+			Expect(k8sClient.Status().Patch(ctx, &k, client.Merge, client.FieldOwner(bucketControllerName))).To(Succeed())
+
+			By("create and reconcile policy")
+
+			p := garagev1alpha1.AccessPolicy{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "testpolicy",
+					Namespace: namespace,
+				},
+				Spec: garagev1alpha1.AccessPolicySpec{
+					AccessKey: accessKeyName,
+					Bucket:    bucketName,
+					Permissions: garagev1alpha1.Permissions{
+						Read:  true,
+						Write: true,
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, &p)).To(Succeed())
+			objID := types.NamespacedName{Name: p.Name,
+				Namespace: p.Namespace}
+
+			sut := NewAccessPolicyReconciler(k8sClient, k8sClient.Scheme())
+			_, err := sut.Reconcile(ctx,
+				reconcile.Request{NamespacedName: objID})
+			Expect(err).ToNot(HaveOccurred())
+
+			var reconciled garagev1alpha1.AccessPolicy
+			_ = k8sClient.Get(ctx, objID, &reconciled)
+
+			readyCond := meta.FindStatusCondition(reconciled.Status.Conditions, Ready)
+			Expect(readyCond.Status).To(Equal(expectedStatus))
+		},
+			Entry("bucket not ready", false, true, metav1.ConditionFalse),
+			Entry("access key not ready", true, false, metav1.ConditionFalse),
+			Entry("bucket and access key ready", true, true, metav1.ConditionTrue),
+		)
+
+		It("should set status not ready when dependent missing", func() {
+
 		})
 	})
 })

@@ -42,9 +42,15 @@ spec:
               accessKey:
                 description: AccessKey is the name of the resource in the namespace.
                 type: string
+                x-kubernetes-validations:
+                - message: Value is immutable
+                  rule: self == oldSelf
               bucket:
                 description: Bucket is the name of the bucket resource.
                 type: string
+                x-kubernetes-validations:
+                - message: Value is immutable
+                  rule: self == oldSelf
               permissions:
                 description: Permissions to grant the access key.
                 properties:
@@ -124,6 +130,9 @@ spec:
                 x-kubernetes-list-map-keys:
                 - type
                 x-kubernetes-list-type: map
+              observedGeneration:
+                format: int64
+                type: integer
             type: object
         required:
         - spec

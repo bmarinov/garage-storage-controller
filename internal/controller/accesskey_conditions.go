@@ -22,16 +22,30 @@ func (k *AccessKey) InitializeConditions() {
 	initResourceConditions(conditions, &k.Object.Status.Conditions)
 }
 
-func (k *AccessKey) MarkAccessKeyReady() {
+func markAccessKeyReady(k *garagev1alpha1.AccessKey) {
 	cond := metav1.Condition{
 		Type:               AccessKeyReady,
 		Status:             metav1.ConditionTrue,
 		LastTransitionTime: metav1.Now(),
-		ObservedGeneration: k.Object.GetGeneration(),
+		ObservedGeneration: k.GetGeneration(),
 		Reason:             "AccessKeyReady",
 		Message:            "External access key is ready",
 	}
-	meta.SetStatusCondition(&k.Object.Status.Conditions, cond)
+	meta.SetStatusCondition(&k.Status.Conditions, cond)
+}
+
+func markAccessKeyNotReady(k *garagev1alpha1.AccessKey,
+	reason,
+	message string,
+	args ...any,
+) {
+	markNotReady(
+		k,
+		&k.Status.Conditions,
+		AccessKeyReady,
+		reason,
+		message,
+		args...)
 }
 
 func (k *AccessKey) MarkNotReady(condType string,
@@ -51,15 +65,19 @@ func (k *AccessKey) MarkNotReady(condType string,
 }
 
 func (k *AccessKey) MarkSecretReady() {
+	markSecretReady(k.Object)
+}
+
+func markSecretReady(k *garagev1alpha1.AccessKey) {
 	cond := metav1.Condition{
 		Type:               KeySecretReady,
 		Status:             metav1.ConditionTrue,
 		LastTransitionTime: metav1.Now(),
-		ObservedGeneration: k.Object.GetGeneration(),
+		ObservedGeneration: k.GetGeneration(),
 		Reason:             "SecretReady",
 		Message:            "Secret for external access key is ready",
 	}
-	meta.SetStatusCondition(&k.Object.Status.Conditions, cond)
+	meta.SetStatusCondition(&k.Status.Conditions, cond)
 }
 
 func (k *AccessKey) AccessKeyCondition() metav1.Condition {
@@ -68,12 +86,16 @@ func (k *AccessKey) AccessKeyCondition() metav1.Condition {
 }
 
 func (k *AccessKey) updateStatus() {
+	updateAccessKeyCondition(k.Object)
+}
+
+func updateAccessKeyCondition(k *garagev1alpha1.AccessKey) {
 	readyStat := metav1.ConditionFalse
 	readyReason := "WaitingForResources"
 	readyMessage := "Waiting for conditions " + AccessKeyReady + " and " + KeySecretReady
 
-	accessKeyCond := k.AccessKeyCondition()
-	secretCond := meta.FindStatusCondition(k.Object.Status.Conditions, KeySecretReady)
+	accessKeyCond := meta.FindStatusCondition(k.Status.Conditions, AccessKeyReady)
+	secretCond := meta.FindStatusCondition(k.Status.Conditions, KeySecretReady)
 	if accessKeyCond.Status == metav1.ConditionTrue &&
 		secretCond.Status == metav1.ConditionTrue {
 		readyStat = metav1.ConditionTrue
@@ -87,11 +109,11 @@ func (k *AccessKey) updateStatus() {
 		Reason:             readyReason,
 		Message:            readyMessage,
 		LastTransitionTime: metav1.Now(),
-		ObservedGeneration: k.Object.GetGeneration(),
+		ObservedGeneration: k.GetGeneration(),
 	}
-	meta.SetStatusCondition(&k.Object.Status.Conditions, readyCondition)
+	meta.SetStatusCondition(&k.Status.Conditions, readyCondition)
 
 	if readyCondition.Status == metav1.ConditionTrue {
-		k.Object.Status.ObservedGeneration = k.Object.GetGeneration()
+		k.Status.ObservedGeneration = k.GetGeneration()
 	}
 }

@@ -16,11 +16,17 @@ func (r *BucketReconciler) reconcileBucket(ctx context.Context, bucket *Bucket) 
 		if errors.Is(err, s3.ErrBucketNotFound) {
 			s3Bucket, err = r.bucket.Create(ctx, alias)
 			if err != nil {
-				bucket.MarkBucketNotReady("CreateFailed", "Failed to create bucket '%s': %v", alias, err)
+				markBucketNotReady(
+					bucket.Object,
+					"CreateFailed",
+					"Failed to create bucket '%s': %v", alias, err)
 				return fmt.Errorf("create new bucket: %w", err)
 			}
 		} else {
-			bucket.MarkBucketNotReady("UnknownState", "S3 API error: %v", err)
+			markBucketNotReady(
+				bucket.Object,
+				"UnknownState",
+				"S3 API error: %v", err)
 			return err
 		}
 	}
@@ -38,12 +44,13 @@ func (r *BucketReconciler) reconcileBucket(ctx context.Context, bucket *Bucket) 
 		})
 
 		if err != nil {
-			bucket.MarkBucketNotReady("Update Failed", "Failed to update bucket configuration: %v", err)
+			markBucketNotReady(bucket.Object,
+				"Update Failed",
+				"Failed to update bucket configuration: %v", err)
 			return fmt.Errorf("updating external bucket to spec: %w", err)
 		}
 	}
-
-	bucket.MarkBucketReady()
+	markBucketReady(bucket.Object)
 	return nil
 }
 
