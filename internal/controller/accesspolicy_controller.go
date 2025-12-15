@@ -37,7 +37,7 @@ import (
 )
 
 type PermissionClient interface {
-	// SetPermissions ensures that an access key has the exact r/w/owner permissions on a bucket
+	// SetPermissions ensures that an access key has the target r/w/owner permissions on a bucket.
 	SetPermissions(ctx context.Context, keyID, bucketID string, permissions s3.Permissions) error
 }
 
@@ -116,6 +116,28 @@ func (r *AccessPolicyReconciler) SetupWithManager(mgr ctrl.Manager) error {
 }
 
 func (r *AccessPolicyReconciler) reconcilePolicy(ctx context.Context, policy *garagev1alpha1.AccessPolicy) error {
+	var errs []error
+
+	err := r.checkBucket(ctx, policy)
+	if err != nil {
+		errs = append(errs, err)
+	}
+
+	err = r.checkAccessKey(ctx, policy)
+	if err != nil {
+		errs = append(errs, err)
+	}
+
+	if len(errs) > 0 {
+		return errors.Join(errs...)
+	}
+
+	// Happy path from here:
+	// client.CreatePolicy(foo)
+	panic("implement")
+}
+
+func (r *AccessPolicyReconciler) checkBucket(ctx context.Context, policy *garagev1alpha1.AccessPolicy) error {
 	var bucket garagev1alpha1.Bucket
 	err := r.client.Get(ctx,
 		types.NamespacedName{Namespace: policy.Namespace, Name: policy.Spec.Bucket},
@@ -129,18 +151,30 @@ func (r *AccessPolicyReconciler) reconcilePolicy(ctx context.Context, policy *ga
 				PolicyBucketReady,
 				ReasonBucketMissing,
 				"Bucket not found in namespace: %v", err)
+			return fmt.Errorf("retrieve bucket %s: %w", policy.Spec.Bucket, err)
+		} else {
+			return fmt.Errorf("unexpected error getting bucket: %w", err)
 		}
-		return fmt.Errorf("retrieve bucket %s: %w", policy.Spec.Bucket, err)
+	} else {
+		bucketCond := meta.FindStatusCondition(bucket.Status.Conditions, Ready)
+		if bucketCond == nil || bucketCond.Status != metav1.ConditionTrue {
+			message := "Bucket condition not met"
+			if bucketCond != nil {
+				message = bucketCond.Message
+			}
+			markPolicyConditionNotReady(policy, PolicyBucketReady, ReasonDependenciesNotReady, "%s", message)
+			return fmt.Errorf("bucket not ready: %w", errDependencyNotReady)
+		} else {
+			// TODO: bucket cond ready
+		}
 	}
 
-	bucketCond := meta.FindStatusCondition(bucket.Status.Conditions, Ready)
-	if bucketCond.Status != metav1.ConditionTrue {
-		markPolicyConditionNotReady(policy, PolicyBucketReady, ReasonDependencyNotReady, "%s", bucketCond.Message)
-		return errDependencyNotReady
-	}
+	return nil
+}
 
+func (r *AccessPolicyReconciler) checkAccessKey(ctx context.Context, policy *garagev1alpha1.AccessPolicy) error {
 	var accessKey garagev1alpha1.AccessKey
-	err = r.client.Get(ctx,
+	err := r.client.Get(ctx,
 		types.NamespacedName{Namespace: policy.Namespace, Name: policy.Spec.AccessKey},
 		&accessKey)
 	if err != nil {
@@ -150,17 +184,22 @@ func (r *AccessPolicyReconciler) reconcilePolicy(ctx context.Context, policy *ga
 				PolicyAccessKeyReady,
 				ReasonAccessKeyMissing,
 				"Access key not found in namespace: %v", err)
+			return fmt.Errorf("retrieve access key %s: %w", policy.Spec.AccessKey, err)
+		} else {
+			return fmt.Errorf("unexpected error gettig access key: %w", err)
 		}
-		return fmt.Errorf("retrieve access key %s: %w", policy.Spec.AccessKey, err)
+	} else {
+		accessKeyCond := meta.FindStatusCondition(accessKey.Status.Conditions, Ready)
+		if accessKeyCond == nil || accessKeyCond.Status != metav1.ConditionTrue {
+			message := "AccessKey condition not met"
+			if accessKeyCond != nil {
+				message = accessKeyCond.Message
+			}
+			markPolicyConditionNotReady(policy, PolicyAccessKeyReady, ReasonDependenciesNotReady, "%s", message)
+			return fmt.Errorf("access key not ready: %w", errDependencyNotReady)
+		} else {
+			// TODO: access key cond ready
+		}
 	}
-	accessKeyCond := meta.FindStatusCondition(accessKey.Status.Conditions, Ready)
-	if accessKeyCond.Status != metav1.ConditionTrue {
-		markPolicyConditionNotReady(policy, PolicyAccessKeyReady, ReasonDependencyNotReady, "%s", accessKeyCond.Message)
-		return errDependencyNotReady
-		// 	policy.NotReady("reason key not ready")
-	}
-
-	// Happy path from here:
-
 	return nil
 }

@@ -54,8 +54,8 @@ func updateBucketReadyCondition(b *garagev1alpha1.Bucket) {
 
 	if bucketCond != nil && bucketCond.Status == metav1.ConditionTrue {
 		readyStat = metav1.ConditionTrue
-		readyReason = "ResourcesReady"
-		readyMessage = "All conditions met"
+		readyReason = defaultReadyReason
+		readyMessage = defaultReadyMessage
 	}
 
 	readyCondition := metav1.Condition{

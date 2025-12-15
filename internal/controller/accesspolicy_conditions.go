@@ -1,6 +1,8 @@
 package controller
 
 import (
+	"fmt"
+
 	garagev1alpha1 "github.com/bmarinov/garage-storage-controller/api/v1alpha1"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -25,7 +27,7 @@ const (
 	// Will not recover without spec change
 	ReasonDependencyFailed string = "DependencyFailed"
 	// Not ready, waiting
-	ReasonDependencyNotReady string = "DependencyNotReady"
+	ReasonDependenciesNotReady string = "DependenciesNotReady"
 	// Transient errors
 	ReasonDegraded string = "DependencyDegraded"
 )
@@ -53,7 +55,7 @@ func markPolicyConditionNotReady(k *garagev1alpha1.AccessPolicy,
 
 func updateAccessPolicyCondition(k *garagev1alpha1.AccessPolicy) {
 	readyStat := metav1.ConditionFalse
-	readyReason := ReasonDependencyNotReady
+	readyReason := ReasonDependenciesNotReady
 	readyMessage := "Waiting for conditions " + AccessKeyReady + " and " + BucketReady
 
 	accessKeyCond := meta.FindStatusCondition(k.Status.Conditions, PolicyAccessKeyReady)
@@ -64,8 +66,20 @@ func updateAccessPolicyCondition(k *garagev1alpha1.AccessPolicy) {
 		bucketCond.Status == metav1.ConditionTrue &&
 		policyCond.Status == metav1.ConditionTrue {
 		readyStat = metav1.ConditionTrue
-		readyReason = "ResourcesReady"
-		readyMessage = "All conditions met"
+		readyReason = defaultReadyReason
+		readyMessage = defaultReadyMessage
+	} else {
+		switch {
+		case bucketCond.Status == metav1.ConditionFalse:
+			readyReason = bucketCond.Reason
+			readyMessage = fmt.Sprintf("Bucket not ready: %s", bucketCond.Message)
+		case accessKeyCond.Status == metav1.ConditionFalse:
+			readyReason = accessKeyCond.Reason
+			readyMessage = fmt.Sprintf("Access key not ready: %s", accessKeyCond.Message)
+		case policyCond.Status == metav1.ConditionFalse:
+			readyReason = policyCond.Reason
+			readyMessage = fmt.Sprintf("Policy assignment failed: %s", policyCond.Message)
+		}
 	}
 
 	readyCondition := metav1.Condition{

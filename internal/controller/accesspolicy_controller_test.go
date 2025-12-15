@@ -55,7 +55,7 @@ var _ = Describe("AccessPolicy Controller", func() {
 			Expect(k8sClient.Delete(ctx, &ns)).To(Succeed())
 		})
 
-		FDescribeTable("missing resource dependencies", func(
+		DescribeTable("missing resource dependencies", func(
 			bucketExists, keyExists bool,
 			expectedReason string,
 		) {
@@ -111,10 +111,11 @@ var _ = Describe("AccessPolicy Controller", func() {
 
 			readyCond := meta.FindStatusCondition(policy.Status.Conditions, Ready)
 			Expect(readyCond.Status).To(Equal(metav1.ConditionFalse), "Ready condition has unexpected status")
-			Expect(readyCond.Reason).To(Equal(expectedReason))
+			Expect(readyCond.Reason).To(Equal(expectedReason), "Specific reason should propagate")
 		},
 			Entry("bucket missing", false, true, ReasonBucketMissing),
 			Entry("key missing", true, false, ReasonAccessKeyMissing),
+			Entry("bucket and key missing", false, false, ReasonBucketMissing),
 		)
 		DescribeTable("Ready state in dependencies", func(
 			bucketReady, keyReady bool,

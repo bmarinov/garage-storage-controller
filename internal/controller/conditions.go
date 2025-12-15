@@ -10,6 +10,11 @@ import (
 // Ready is the top-level ready condition for a resource.
 const Ready string = "Ready"
 
+const (
+	defaultReadyReason  = "ResourcesReady"
+	defaultReadyMessage = "All conditions met"
+)
+
 func initResourceConditions(allConditions []string, conditions *[]metav1.Condition) {
 	now := metav1.Now()
 
