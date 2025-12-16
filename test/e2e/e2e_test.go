@@ -39,11 +39,15 @@ import (
 )
 
 var wellKnown = struct {
-	accessKeyName string
-	secretName    string
+	accessKeyName    string
+	secretName       string
+	bucketName       string
+	accessPolicyName string
 }{
-	accessKeyName: "accesskey-sample",
-	secretName:    "foo-some-secret",
+	accessKeyName:    "accesskey-sample",
+	secretName:       "foo-some-secret",
+	bucketName:       "bucket-sample",
+	accessPolicyName: "accesspolicy-sample",
 }
 
 // namespace where the project is deployed in
@@ -139,8 +143,6 @@ var _ = Describe("Manager", Ordered, func() {
 		Expect(err).ToNot(HaveOccurred())
 	})
 
-	// After all tests have been executed, clean up by undeploying the controller, uninstalling CRDs,
-	// and deleting the namespace.
 	AfterAll(func() {
 		By("cleaning up the curl pod for metrics")
 		cmd := exec.Command("kubectl", "delete", "pod", "curl-metrics", "-n", namespace)
@@ -159,8 +161,6 @@ var _ = Describe("Manager", Ordered, func() {
 		_, _ = utils.Run(cmd)
 	})
 
-	// After each test, check for failures and collect logs, events,
-	// and pod descriptions for debugging.
 	AfterEach(func() {
 		specReport := CurrentSpecReport()
 		if specReport.Failed() {
@@ -348,6 +348,31 @@ var _ = Describe("Manager", Ordered, func() {
 			cmd = exec.Command("kubectl", "get", "secret", "-n", "default",
 				wellKnown.secretName)
 			Expect(cmd.Run()).Should(Succeed())
+
+			By("creating Bucket API resource")
+			cmd = exec.Command("kubectl", "apply", "-f", "config/samples/garage_v1alpha1_bucket.yaml")
+			_, err = utils.Run(cmd)
+			Expect(err).To(Succeed())
+
+			By("waiting for Bucket ready")
+			By("waiting for AccessKey Ready")
+			Eventually(func(g Gomega) {
+				cmd := exec.Command("kubectl",
+					"wait", "bucket", wellKnown.bucketName, "--for=condition=Ready", "--timeout=1s")
+				g.Expect(cmd.Run()).To(Succeed())
+			}).Should(Succeed())
+
+			By("creating AccessPolicy resource")
+			cmd = exec.Command("kubectl", "apply", "-f", "config/samples/garage_v1alpha1_accesspolicy.yaml")
+			_, err = utils.Run(cmd)
+			Expect(err).To(Succeed())
+
+			By("waiting for AccessPolicy Ready")
+			Eventually(func(g Gomega) {
+				cmd := exec.Command("kubectl",
+					"wait", "accesspolicy", wellKnown.accessPolicyName, "--for=condition=Ready", "--timeout=1s")
+				g.Expect(cmd.Run()).To(Succeed())
+			}).Should(Succeed())
 		})
 
 		// +kubebuilder:scaffold:e2e-webhooks-checks

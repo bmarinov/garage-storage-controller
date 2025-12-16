@@ -11,7 +11,7 @@ import (
 const Ready string = "Ready"
 
 const (
-	defaultReadyReason  = "ResourcesReady"
+	defaultReadyReason  = "Ready"
 	defaultReadyMessage = "All conditions met"
 )
 
