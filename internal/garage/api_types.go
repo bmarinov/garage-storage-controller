@@ -21,7 +21,25 @@ type CreateKeyRequest struct {
 }
 
 type AccessKeyResponse struct {
-	AccessKeyID     string `json:"accessKeyId"`
-	SecretAccessKey string `json:"secretAccessKey"`
-	Name            string `json:"name"`
+	AccessKeyID     string                  `json:"accessKeyId"`
+	Buckets         []KeyInfoBucketResponse `json:"buckets"`
+	SecretAccessKey string                  `json:"secretAccessKey"`
+	Name            string                  `json:"name"`
+}
+
+type KeyInfoBucketResponse struct {
+	ID          string        `json:"id"`
+	Permissions BucketKeyPerm `json:"permissions"`
+}
+
+type AllowBucketKeyRequest struct {
+	AccessKeyID string        `json:"accessKeyId"`
+	BucketID    string        `json:"bucketId"`
+	Permissions BucketKeyPerm `json:"permissions"`
+}
+
+type BucketKeyPerm struct {
+	Owner bool `json:"owner"`
+	Read  bool `json:"read"`
+	Write bool `json:"write"`
 }

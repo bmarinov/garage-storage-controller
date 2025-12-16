@@ -84,7 +84,7 @@ func (r *AccessKeyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		return ctrl.Result{}, err
 	}
 
-	key.updateStatus()
+	updateAccessKeyCondition(&accessKey)
 
 	if !equality.Semantic.DeepEqual(*orig, accessKey.Status) {
 		err = r.client.Status().Patch(ctx, &accessKey, client.Merge, client.FieldOwner(bucketControllerName))

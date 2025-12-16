@@ -38,29 +38,67 @@ func initializePolicyConditions(p *garagev1alpha1.AccessPolicy) {
 }
 
 // markPolicyConditionNotReady sets a condition type specific to the AccessPolicy to not ready.
-func markPolicyConditionNotReady(k *garagev1alpha1.AccessPolicy,
+func markPolicyConditionNotReady(p *garagev1alpha1.AccessPolicy,
 	condType,
 	reason,
 	message string,
 	args ...any,
 ) {
 	markNotReady(
-		k,
-		&k.Status.Conditions,
+		p,
+		&p.Status.Conditions,
 		condType,
 		reason,
 		message,
 		args...)
 }
 
-func updateAccessPolicyCondition(k *garagev1alpha1.AccessPolicy) {
+// markPolicyKeyReady to indicate that referenced AccessKey is ready.
+func markPolicyKeyReady(p *garagev1alpha1.AccessPolicy) {
+	cond := metav1.Condition{
+		Type:               PolicyAccessKeyReady,
+		Status:             metav1.ConditionTrue,
+		LastTransitionTime: metav1.Now(),
+		ObservedGeneration: p.GetGeneration(),
+		Reason:             "AccessKeyReady",
+		Message:            "AccessKey is ready for assignment",
+	}
+	meta.SetStatusCondition(&p.Status.Conditions, cond)
+}
+
+// markPolicyBucketReady to indicate that referenced Bucket is ready.
+func markPolicyBucketReady(p *garagev1alpha1.AccessPolicy) {
+	cond := metav1.Condition{
+		Type:               PolicyBucketReady,
+		Status:             metav1.ConditionTrue,
+		LastTransitionTime: metav1.Now(),
+		ObservedGeneration: p.GetGeneration(),
+		Reason:             "BucketReady",
+		Message:            "Bucket is ready for assignment",
+	}
+	meta.SetStatusCondition(&p.Status.Conditions, cond)
+}
+
+func markPolicyAssignmentReady(p *garagev1alpha1.AccessPolicy) {
+	cond := metav1.Condition{
+		Type:               PolicyAssignmentReady,
+		Status:             metav1.ConditionTrue,
+		LastTransitionTime: metav1.Now(),
+		ObservedGeneration: p.GetGeneration(),
+		Reason:             "AccessPolicyAssigned",
+		Message:            "Access policy configured in external system.",
+	}
+	meta.SetStatusCondition(&p.Status.Conditions, cond)
+}
+
+func updateAccessPolicyCondition(p *garagev1alpha1.AccessPolicy) {
 	readyStat := metav1.ConditionFalse
 	readyReason := ReasonDependenciesNotReady
 	readyMessage := "Waiting for conditions " + AccessKeyReady + " and " + BucketReady
 
-	accessKeyCond := meta.FindStatusCondition(k.Status.Conditions, PolicyAccessKeyReady)
-	bucketCond := meta.FindStatusCondition(k.Status.Conditions, PolicyBucketReady)
-	policyCond := meta.FindStatusCondition(k.Status.Conditions, PolicyAssignmentReady)
+	accessKeyCond := meta.FindStatusCondition(p.Status.Conditions, PolicyAccessKeyReady)
+	bucketCond := meta.FindStatusCondition(p.Status.Conditions, PolicyBucketReady)
+	policyCond := meta.FindStatusCondition(p.Status.Conditions, PolicyAssignmentReady)
 
 	if accessKeyCond.Status == metav1.ConditionTrue &&
 		bucketCond.Status == metav1.ConditionTrue &&
@@ -88,11 +126,11 @@ func updateAccessPolicyCondition(k *garagev1alpha1.AccessPolicy) {
 		Reason:             readyReason,
 		Message:            readyMessage,
 		LastTransitionTime: metav1.Now(),
-		ObservedGeneration: k.GetGeneration(),
+		ObservedGeneration: p.GetGeneration(),
 	}
-	meta.SetStatusCondition(&k.Status.Conditions, readyCondition)
+	meta.SetStatusCondition(&p.Status.Conditions, readyCondition)
 
 	if readyCondition.Status == metav1.ConditionTrue {
-		k.Status.ObservedGeneration = k.GetGeneration()
+		p.Status.ObservedGeneration = p.GetGeneration()
 	}
 }

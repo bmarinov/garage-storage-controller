@@ -85,10 +85,6 @@ func (k *AccessKey) AccessKeyCondition() metav1.Condition {
 	return *cond
 }
 
-func (k *AccessKey) updateStatus() {
-	updateAccessKeyCondition(k.Object)
-}
-
 func updateAccessKeyCondition(k *garagev1alpha1.AccessKey) {
 	readyStat := metav1.ConditionFalse
 	readyReason := "WaitingForResources"

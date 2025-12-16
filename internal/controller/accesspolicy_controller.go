@@ -137,16 +137,20 @@ func (r *AccessPolicyReconciler) reconcilePolicy(ctx context.Context, policy *ga
 		return errors.Join(errs...)
 	}
 
-	// Happy path from here:
-	// client.CreatePolicy(foo)
-	err = r.adminClient.SetPermissions(ctx, accessKey.Status.ID, bucket.Status.BucketID,
+	err = r.adminClient.SetPermissions(ctx,
+		accessKey.Status.ID,
+		bucket.Status.BucketID,
 		s3.Permissions{
 			Read:  policy.Spec.Permissions.Read,
 			Write: policy.Spec.Permissions.Write,
 			Owner: policy.Spec.Permissions.Owner,
 		})
+	if err != nil {
+		return err
+	}
+	markPolicyAssignmentReady(policy)
 
-	panic("implement")
+	return nil
 }
 
 func (r *AccessPolicyReconciler) checkBucket(ctx context.Context,
@@ -178,7 +182,7 @@ func (r *AccessPolicyReconciler) checkBucket(ctx context.Context,
 			markPolicyConditionNotReady(policy, PolicyBucketReady, ReasonDependenciesNotReady, "%s", message)
 			return nil, fmt.Errorf("bucket not ready: %w", errDependencyNotReady)
 		} else {
-			// TODO: bucket cond ready
+			markPolicyBucketReady(policy)
 		}
 	}
 
@@ -214,7 +218,7 @@ func (r *AccessPolicyReconciler) checkAccessKey(
 			markPolicyConditionNotReady(policy, PolicyAccessKeyReady, ReasonDependenciesNotReady, "%s", message)
 			return nil, fmt.Errorf("access key not ready: %w", errDependencyNotReady)
 		} else {
-			// TODO: access key cond ready
+			markPolicyKeyReady(policy)
 		}
 	}
 	return &accessKey, nil

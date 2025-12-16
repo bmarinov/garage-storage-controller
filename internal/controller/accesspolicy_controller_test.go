@@ -192,8 +192,66 @@ var _ = Describe("AccessPolicy Controller", func() {
 			Entry("bucket and access key ready", true, true, metav1.ConditionTrue),
 		)
 
-		It("should set status not ready when dependent missing", func() {
+		It("should reconcile with dependencies ready", func() {
+			By("creating dependencies")
+			bucketName := "bucket-foo"
+			accessKeyName := "key-foo-bar"
 
+			bucketRes := garagev1alpha1.Bucket{
+				ObjectMeta: metav1.ObjectMeta{Name: bucketName, Namespace: namespace},
+				Spec:       garagev1alpha1.BucketSpec{Name: "blap-bucket3132"},
+			}
+			Expect(k8sClient.Create(ctx, &bucketRes)).To(Succeed())
+			markBucketReady(&bucketRes)
+			updateBucketReadyCondition(&bucketRes)
+			Expect(k8sClient.Status().Patch(ctx, &bucketRes, client.Merge, client.FieldOwner(bucketControllerName))).To(Succeed())
+			keyRes := garagev1alpha1.AccessKey{
+				ObjectMeta: metav1.ObjectMeta{Name: accessKeyName, Namespace: namespace},
+				Spec:       garagev1alpha1.AccessKeySpec{SecretName: "zzz-ns-secret"},
+			}
+			Expect(k8sClient.Create(ctx, &keyRes)).To(Succeed())
+
+			markAccessKeyReady(&keyRes)
+			markSecretReady(&keyRes)
+			updateAccessKeyCondition(&keyRes)
+			Expect(k8sClient.Status().Patch(ctx, &keyRes, client.Merge, client.FieldOwner(bucketControllerName))).To(Succeed())
+
+			By("creating a referencing policy")
+			policy := garagev1alpha1.AccessPolicy{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "testpolicy",
+					Namespace: namespace,
+				},
+				Spec: garagev1alpha1.AccessPolicySpec{
+					AccessKey: accessKeyName,
+					Bucket:    bucketName,
+					Permissions: garagev1alpha1.Permissions{
+						Read: true,
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, &policy)).To(Succeed())
+
+			By("reconciling policy")
+			sut := NewAccessPolicyReconciler(k8sClient, k8sClient.Scheme(), &permissionClientStub{})
+			objID := types.NamespacedName{
+				Namespace: policy.Namespace,
+				Name:      policy.Name,
+			}
+
+			_, err := sut.Reconcile(ctx, reconcile.Request{NamespacedName: objID})
+			Expect(err).ToNot(HaveOccurred())
+
+			By("setting access policy and top-level Ready status")
+			var reconciled garagev1alpha1.AccessPolicy
+			_ = k8sClient.Get(ctx, objID, &reconciled)
+
+			policyCond := meta.FindStatusCondition(reconciled.Status.Conditions, PolicyAssignmentReady)
+			Expect(policyCond.Status).To(Equal(metav1.ConditionTrue))
+			readyCond := meta.FindStatusCondition(reconciled.Status.Conditions, Ready)
+			Expect(readyCond.Status).To(Equal(metav1.ConditionTrue))
+			Expect(readyCond.ObservedGeneration).To(Equal(reconciled.GetGeneration()),
+				"status and object generation should be equal")
 		})
 	})
 })

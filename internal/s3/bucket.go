@@ -31,7 +31,7 @@ type AccessKey struct {
 }
 
 type Permissions struct {
+	Owner bool
 	Read  bool
 	Write bool
-	Owner bool
 }
