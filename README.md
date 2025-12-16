@@ -40,6 +40,7 @@ spec:
 
 ```
 
+This will create a bucket and an access key on Garage. Permissions will be set via the admin API.
 
 ### CRDs
 - `Bucket`: Creates S3 buckets on the Garage cluster
@@ -71,7 +72,10 @@ TBD
 
 ### Configuration
 
-(API key)
+| Env variable        | Description                                                    |
+| ------------------- | -------------------------------------------------------------- |
+| GARAGE_API_ENDPOINT | Endpoint address of the Garage admin API.                      |
+| GARAGE_API_TOKEN    | API key used to authenticate requests to the Garage admin API. |
 
 ### RBAC
 

@@ -364,10 +364,6 @@ func (p *PermissionClient) allowBucketKey(ctx context.Context,
 	}()
 
 	if response.StatusCode != http.StatusOK {
-		// TODO: test with missing bucket and key separately
-		// if response.StatusCode == http.StatusNotFound {
-		// 	return fmt.Errorf("allow key: %w for id '%s'", s3.ErrKeyNotFound, keyID)
-		// }
 		body, _ := io.ReadAll(response.Body)
 		return fmt.Errorf("update bucket: unexpected status code %d: %s", response.StatusCode, string(body))
 	}
