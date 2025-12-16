@@ -31,6 +31,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	garagev1alpha1 "github.com/bmarinov/garage-storage-controller/api/v1alpha1"
 	"github.com/bmarinov/garage-storage-controller/internal/s3"
@@ -80,15 +81,19 @@ func (r *AccessPolicyReconciler) Reconcile(ctx context.Context, req ctrl.Request
 
 	logger.V(1).Info("Reconciling AccessPolicy", "name", req.NamespacedName)
 
-	orig := policy.Status.DeepCopy()
-	initializePolicyConditions(&policy)
+	if policy.Status.ObservedGeneration == policy.Generation &&
+		meta.IsStatusConditionTrue(policy.Status.Conditions, Ready) {
+		return reconcile.Result{}, nil
+	}
 
+	oldStatus := policy.Status.DeepCopy()
+	initializePolicyConditions(&policy)
 	err = r.reconcilePolicy(ctx, &policy)
 
 	updateAccessPolicyCondition(&policy)
 
 	var result ctrl.Result
-	var resultErr error
+	var resultErr error = nil
 
 	if err != nil {
 		switch {
@@ -101,8 +106,7 @@ func (r *AccessPolicyReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		}
 	}
 
-	// TODO: patch status, merge vs apply?
-	if !equality.Semantic.DeepEqual(*orig, policy.Status) {
+	if !equality.Semantic.DeepEqual(*oldStatus, policy.Status) {
 		err = r.client.Status().Patch(ctx, &policy, client.Merge, client.FieldOwner(bucketControllerName))
 		if err != nil {
 			return ctrl.Result{}, err

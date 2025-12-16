@@ -6,17 +6,13 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-type Bucket struct {
-	Object *garagev1alpha1.Bucket
-}
-
 const (
 	BucketReady string = "BucketReady"
 )
 
-func (b *Bucket) InitializeConditions() {
+func initializeBucketConditions(b *garagev1alpha1.Bucket) {
 	conditions := []string{Ready, BucketReady}
-	initResourceConditions(conditions, &b.Object.Status.Conditions)
+	initResourceConditions(conditions, &b.Status.Conditions)
 }
 
 func markBucketNotReady(b *garagev1alpha1.Bucket,

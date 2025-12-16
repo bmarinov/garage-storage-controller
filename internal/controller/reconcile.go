@@ -9,48 +9,48 @@ import (
 	"github.com/bmarinov/garage-storage-controller/internal/s3"
 )
 
-func (r *BucketReconciler) reconcileBucket(ctx context.Context, bucket *Bucket) error {
-	alias := bucket.Object.Spec.Name
+func (r *BucketReconciler) reconcileBucket(ctx context.Context, bucket *garagev1alpha1.Bucket) error {
+	alias := bucket.Spec.Name
 	s3Bucket, err := r.bucket.Get(ctx, alias)
 	if err != nil {
 		if errors.Is(err, s3.ErrBucketNotFound) {
 			s3Bucket, err = r.bucket.Create(ctx, alias)
 			if err != nil {
 				markBucketNotReady(
-					bucket.Object,
+					bucket,
 					"CreateFailed",
 					"Failed to create bucket '%s': %v", alias, err)
 				return fmt.Errorf("create new bucket: %w", err)
 			}
 		} else {
 			markBucketNotReady(
-				bucket.Object,
+				bucket,
 				"UnknownState",
 				"S3 API error: %v", err)
 			return err
 		}
 	}
 
-	if bucket.Object.Status.BucketID == "" {
-		bucket.Object.Status.BucketID = s3Bucket.ID
+	if bucket.Status.BucketID == "" {
+		bucket.Status.BucketID = s3Bucket.ID
 	}
 
-	diff := compareSpec(s3Bucket, bucket.Object.Spec)
+	diff := compareSpec(s3Bucket, bucket.Spec)
 
 	if diff {
 		err := r.bucket.Update(ctx, s3Bucket.ID, s3.Quotas{
-			MaxObjects: bucket.Object.Spec.MaxObjects,
-			MaxSize:    bucket.Object.Spec.MaxSize,
+			MaxObjects: bucket.Spec.MaxObjects,
+			MaxSize:    bucket.Spec.MaxSize,
 		})
 
 		if err != nil {
-			markBucketNotReady(bucket.Object,
+			markBucketNotReady(bucket,
 				"Update Failed",
 				"Failed to update bucket configuration: %v", err)
 			return fmt.Errorf("updating external bucket to spec: %w", err)
 		}
 	}
-	markBucketReady(bucket.Object)
+	markBucketReady(bucket)
 	return nil
 }
 
