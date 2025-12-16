@@ -40,10 +40,8 @@ patches:
         runAsNonRoot: true
         runAsUser: 65532
         runAsGroup: 65532
-# TODO: ^^ remove 'run as root' patch once compat is built into the image ^^
   target:
     group: apps
     version: v1
     kind: StatefulSet
     name: garage
-# TODO: generate the secret at startup

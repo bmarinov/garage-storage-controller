@@ -1,0 +1,14 @@
+apiVersion: garage.getclustered.net/v1alpha1
+kind: AccessPolicy
+metadata:
+  labels:
+    app.kubernetes.io/name: garage-storage-controller
+    app.kubernetes.io/managed-by: kustomize
+  name: accesspolicy-sample
+spec:
+  accessKey: accesskey-sample
+  bucket: bucket-sample
+  permissions:
+    read: true
+    write: true
+    owner: false

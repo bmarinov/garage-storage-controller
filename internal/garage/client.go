@@ -16,6 +16,7 @@ import (
 type AdminClient struct {
 	*BucketClient
 	*AccessKeyClient
+	*PermissionClient
 }
 
 func NewClient(apiAddr string, token string) *AdminClient {
@@ -25,12 +26,17 @@ func NewClient(apiAddr string, token string) *AdminClient {
 		baseURL:    apiAddr,
 	}
 
+	keyClient := &AccessKeyClient{
+		&baseClient,
+	}
 	return &AdminClient{
 		BucketClient: &BucketClient{
 			&baseClient,
 		},
-		AccessKeyClient: &AccessKeyClient{
-			&baseClient,
+		AccessKeyClient: keyClient,
+		PermissionClient: &PermissionClient{
+			adminAPIHttpClient: &baseClient,
+			accessKeys:         keyClient,
 		},
 	}
 }
@@ -122,14 +128,32 @@ func (a *AccessKeyClient) Create(ctx context.Context, keyName string) (s3.Access
 }
 
 func (a *AccessKeyClient) Get(ctx context.Context, id string) (s3.AccessKey, error) {
-	return a.get(ctx, id, "", true)
+	result, err := a.get(ctx, id, "", true)
+	if err != nil {
+		return s3.AccessKey{}, err
+	}
+
+	return s3.AccessKey{
+		ID:     result.AccessKeyID,
+		Secret: result.SecretAccessKey,
+		Name:   result.Name,
+	}, nil
 }
 
 func (a *AccessKeyClient) Lookup(ctx context.Context, search string) (s3.AccessKey, error) {
-	return a.get(ctx, "", search, true)
+	result, err := a.get(ctx, "", search, true)
+	if err != nil {
+		return s3.AccessKey{}, err
+	}
+
+	return s3.AccessKey{
+		ID:     result.AccessKeyID,
+		Secret: result.SecretAccessKey,
+		Name:   result.Name,
+	}, nil
 }
 
-func (a *AccessKeyClient) get(ctx context.Context, id string, search string, retrieveSecret bool) (s3.AccessKey, error) {
+func (a *AccessKeyClient) get(ctx context.Context, id string, search string, retrieveSecret bool) (AccessKeyResponse, error) {
 	params := url.Values{}
 	if id != "" {
 		params.Add("id", id)
@@ -143,33 +167,24 @@ func (a *AccessKeyClient) get(ctx context.Context, id string, search string, ret
 
 	response, err := a.doRequest(ctx, http.MethodGet, path, &params, nil)
 	if err != nil {
-		return s3.AccessKey{}, fmt.Errorf("get key: %w", err)
+		return AccessKeyResponse{}, fmt.Errorf("get key: %w", err)
 	}
 	defer func() {
 		_ = response.Body.Close()
 	}()
 	if response.StatusCode != http.StatusOK {
 		if response.StatusCode == http.StatusNotFound {
-			return s3.AccessKey{}, fmt.Errorf("%w: id '%s'; search '%s'", s3.ErrKeyNotFound, id, search)
+			return AccessKeyResponse{}, fmt.Errorf("%w: id '%s'; search '%s'", s3.ErrKeyNotFound, id, search)
 		}
 		// TODO: inspect server side code, why bad request? workaround:
 		if response.StatusCode == http.StatusBadRequest &&
 			search != "" && id == "" {
-			return s3.AccessKey{}, fmt.Errorf("bad request looking for key with search term %s: %w", search, s3.ErrKeyNotFound)
+			return AccessKeyResponse{}, fmt.Errorf("bad request looking for key with search term %s: %w", search, s3.ErrKeyNotFound)
 		}
-		return s3.AccessKey{}, fmt.Errorf("unexpected status code %d", response.StatusCode)
+		return AccessKeyResponse{}, fmt.Errorf("unexpected status code %d", response.StatusCode)
 	}
 
-	result, err := unmarshalBody[AccessKeyResponse](response.Body)
-	if err != nil {
-		return s3.AccessKey{}, nil
-	}
-
-	return s3.AccessKey{
-		ID:     result.AccessKeyID,
-		Secret: result.SecretAccessKey,
-		Name:   result.Name,
-	}, nil
+	return unmarshalBody[AccessKeyResponse](response.Body)
 }
 
 type BucketClient struct {
@@ -268,6 +283,121 @@ func (b *BucketClient) Update(ctx context.Context, id string, quotas s3.Quotas) 
 		if response.StatusCode == http.StatusNotFound {
 			return fmt.Errorf("update bucket: %w for id '%s'", s3.ErrBucketNotFound, id)
 		}
+		body, _ := io.ReadAll(response.Body)
+		return fmt.Errorf("update bucket: unexpected status code %d: %s", response.StatusCode, string(body))
+	}
+
+	return nil
+}
+
+type PermissionClient struct {
+	*adminAPIHttpClient
+
+	accessKeys *AccessKeyClient
+}
+
+func (p *PermissionClient) SetPermissions(ctx context.Context,
+	keyID string,
+	bucketID string,
+	permissions s3.Permissions) error {
+
+	denyPermissions := s3.Permissions{
+		Owner: !permissions.Owner,
+		Read:  !permissions.Read,
+		Write: !permissions.Write,
+	}
+	err := p.denyBucketKey(ctx, keyID, bucketID, denyPermissions)
+	if err != nil {
+		return err
+	}
+
+	err = p.allowBucketKey(ctx, keyID, bucketID, permissions)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (p *PermissionClient) GetPermissions(ctx context.Context,
+	keyID, bucketID string) (s3.Permissions, error) {
+	key, err := p.accessKeys.get(ctx, keyID, "", false)
+	if err != nil {
+		return s3.Permissions{}, err
+	}
+
+	for i := 0; i < len(key.Buckets); i++ {
+		if key.Buckets[i].ID == bucketID {
+
+			return s3.Permissions(key.Buckets[i].Permissions), nil
+		}
+	}
+
+	// key has no permissions on bucket
+	return s3.Permissions{}, nil
+}
+
+func (p *PermissionClient) allowBucketKey(ctx context.Context,
+	keyID, bucketID string,
+	permissions s3.Permissions) error {
+
+	request := AllowBucketKeyRequest{
+		AccessKeyID: keyID,
+		BucketID:    bucketID,
+		Permissions: BucketKeyPerm(permissions),
+	}
+
+	var buf bytes.Buffer
+	err := json.NewEncoder(&buf).Encode(request)
+	if err != nil {
+		return fmt.Errorf("marshal AllowBucketKey request: %w", err)
+	}
+
+	const path = "/v2/AllowBucketKey"
+
+	response, err := p.doRequest(ctx, http.MethodPost, path, nil, &buf)
+	if err != nil {
+		return fmt.Errorf("allow bucket key request: %w", err)
+	}
+	defer func() {
+		_ = response.Body.Close()
+	}()
+
+	if response.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(response.Body)
+		return fmt.Errorf("update bucket: unexpected status code %d: %s", response.StatusCode, string(body))
+	}
+
+	return nil
+}
+
+func (p *PermissionClient) denyBucketKey(ctx context.Context,
+	keyID, bucketID string,
+	denyPermissions s3.Permissions) error {
+
+	request := AllowBucketKeyRequest{
+		AccessKeyID: keyID,
+		BucketID:    bucketID,
+		Permissions: BucketKeyPerm(denyPermissions),
+	}
+
+	var buf bytes.Buffer
+	err := json.NewEncoder(&buf).Encode(request)
+	if err != nil {
+		return fmt.Errorf("marshal DenyBucketKey request: %w", err)
+	}
+
+	const path = "/v2/DenyBucketKey"
+
+	response, err := p.doRequest(ctx, http.MethodPost, path, nil, &buf)
+	if err != nil {
+		return fmt.Errorf("deny bucket key request: %w", err)
+	}
+	defer func() {
+		_ = response.Body.Close()
+	}()
+
+	if response.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(response.Body)
 		return fmt.Errorf("update bucket: unexpected status code %d: %s", response.StatusCode, string(body))
 	}

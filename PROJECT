@@ -3,6 +3,7 @@
 # and allow the plugins properly work.
 # More info: https://book.kubebuilder.io/reference/project-config.html
 cliVersion: 4.10.1
+version: "3"
 domain: getclustered.net
 layout:
 - go.kubebuilder.io/v4
@@ -27,4 +28,12 @@ resources:
   kind: AccessKey
   path: github.com/bmarinov/garage-storage-controller/api/v1alpha1
   version: v1alpha1
-version: "3"
+- api:
+    crdVersion: v1
+    namespaced: true
+  controller: true
+  domain: getclustered.net
+  group: garage
+  kind: AccessPolicy
+  path: github.com/bmarinov/garage-storage-controller/api/v1alpha1
+  version: v1alpha1

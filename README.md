@@ -25,8 +25,22 @@ spec:
   secretName: foo-bucket-access-rw
   neverExpires: true
 
+---
+apiVersion: garage.getclustered.net/v1alpha1
+kind: AccessPolicy
+metadata:
+  name: accesspolicy-sample
+spec:
+  accessKey: accesskey-sample
+  bucket: bucket-sample
+  permissions:
+    read: true
+    write: true
+    owner: false
+
 ```
 
+This will create a bucket and an access key on Garage. Permissions will be set via the admin API.
 
 ### CRDs
 - `Bucket`: Creates S3 buckets on the Garage cluster
@@ -58,7 +72,10 @@ TBD
 
 ### Configuration
 
-(API key)
+| Env variable        | Description                                                    |
+| ------------------- | -------------------------------------------------------------- |
+| GARAGE_API_ENDPOINT | Endpoint address of the Garage admin API.                      |
+| GARAGE_API_TOKEN    | API key used to authenticate requests to the Garage admin API. |
 
 ### RBAC
 
@@ -67,6 +84,14 @@ TBD
 ### Project setup
 
 Scaffolding done with kubebuilder. See [docs](https://book.kubebuilder.io/reference/reference) for more info.
+
+Admin API client generated with the OpenAPI spec and oapi-codegen:
+
+```sh
+go get -tool github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@latest
+
+//go:generate go tool oapi-codegen -config cfg.yaml ../../api.yaml
+```
 
 ### Running tests
 

@@ -2,4 +2,5 @@
 resources:
 - garage_v1alpha1_bucket.yaml
 - garage_v1alpha1_accesskey.yaml
+- garage_v1alpha1_accesspolicy.yaml
 # +kubebuilder:scaffold:manifestskustomizesamples

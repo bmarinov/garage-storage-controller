@@ -4,6 +4,7 @@
 resources:
 - bases/garage.getclustered.net_buckets.yaml
 - bases/garage.getclustered.net_accesskeys.yaml
+- bases/garage.getclustered.net_accesspolicies.yaml
 # +kubebuilder:scaffold:crdkustomizeresource
 
 patches: []
