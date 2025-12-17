@@ -123,6 +123,7 @@ func TestBucketClient(t *testing.T) {
 func TestAccessKeyClient(t *testing.T) {
 	apiclient := NewClient(garageEnv.AdminAPIAddr, garageEnv.APIToken)
 	sut := apiclient.AccessKeyClient
+	ctx := t.Context()
 
 	t.Run("Create", func(t *testing.T) {
 		t.Run("new key", func(t *testing.T) {
@@ -212,6 +213,30 @@ func TestAccessKeyClient(t *testing.T) {
 			}
 			if !errors.Is(err, s3.ErrKeyNotFound) {
 				t.Errorf("unexpected error %v", err)
+			}
+		})
+	})
+	t.Run("Delete", func(t *testing.T) {
+		t.Run("existing key", func(t *testing.T) {
+			key, err := sut.Create(ctx, fixture.RandAlpha(12))
+			if err != nil {
+				t.Fatal(err)
+			}
+			err = sut.Delete(ctx, key.ID)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			_, err = sut.Get(ctx, key.ID)
+			if err == nil || !errors.Is(err, s3.ErrKeyNotFound) {
+				t.Errorf("expected error, got %v", err)
+			}
+		})
+		t.Run("key not found", func(t *testing.T) {
+			unknownKey := fixture.RandAlpha(16)
+			err := sut.Delete(ctx, unknownKey)
+			if err == nil || !errors.Is(err, s3.ErrKeyNotFound) {
+				t.Errorf("expected err, got %v", err)
 			}
 		})
 	})

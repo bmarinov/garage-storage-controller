@@ -41,49 +41,6 @@ func NewClient(apiAddr string, token string) *AdminClient {
 	}
 }
 
-type adminAPIHttpClient struct {
-	httpClient *http.Client
-	token      string
-	baseURL    string
-}
-
-func (c *adminAPIHttpClient) doRequest(ctx context.Context,
-	method string,
-	path string,
-	queryParams *url.Values,
-	body io.Reader,
-) (*http.Response, error) {
-	fullURL, err := url.JoinPath(c.baseURL, path)
-	if err != nil {
-		return nil, fmt.Errorf("constructing endpoint path: %w", err)
-	}
-
-	requestURL, err := url.Parse(fullURL)
-	if err != nil {
-		return nil, fmt.Errorf("invalid url: %w", err)
-	}
-
-	if queryParams != nil {
-		query := requestURL.Query()
-		for k, values := range *queryParams {
-			for _, v := range values {
-				query.Add(k, v)
-			}
-		}
-		requestURL.RawQuery = query.Encode()
-	}
-
-	req, err := http.NewRequestWithContext(ctx, method, requestURL.String(), body)
-	if err != nil {
-		return nil, err
-	}
-
-	req.Header.Set("Authorization", "Bearer "+c.token)
-	req.Header.Set("Content-Type", "application/json")
-
-	return c.httpClient.Do(req)
-}
-
 type AccessKeyClient struct {
 	*adminAPIHttpClient
 }
@@ -151,6 +108,29 @@ func (a *AccessKeyClient) Lookup(ctx context.Context, search string) (s3.AccessK
 		Secret: result.SecretAccessKey,
 		Name:   result.Name,
 	}, nil
+}
+
+func (a *AccessKeyClient) Delete(ctx context.Context, id string) error {
+	params := url.Values{}
+	params.Add("id", id)
+
+	const path = "/v2/DeleteKey"
+
+	response, err := a.doRequest(ctx, http.MethodPost, path, &params, nil)
+	if err != nil {
+		return fmt.Errorf("delete key %s: %w", id, err)
+	}
+	defer func() {
+		_ = response.Body.Close()
+	}()
+	if response.StatusCode != http.StatusOK {
+		if response.StatusCode == http.StatusNotFound {
+			return fmt.Errorf("delete key %s: %w", id, s3.ErrKeyNotFound)
+		}
+		return fmt.Errorf("delete key: unexpected status code %d", response.StatusCode)
+	}
+
+	return nil
 }
 
 func (a *AccessKeyClient) get(ctx context.Context, id string, search string, retrieveSecret bool) (AccessKeyResponse, error) {
@@ -403,6 +383,49 @@ func (p *PermissionClient) denyBucketKey(ctx context.Context,
 	}
 
 	return nil
+}
+
+type adminAPIHttpClient struct {
+	httpClient *http.Client
+	token      string
+	baseURL    string
+}
+
+func (c *adminAPIHttpClient) doRequest(ctx context.Context,
+	method string,
+	path string,
+	queryParams *url.Values,
+	body io.Reader,
+) (*http.Response, error) {
+	fullURL, err := url.JoinPath(c.baseURL, path)
+	if err != nil {
+		return nil, fmt.Errorf("constructing endpoint path: %w", err)
+	}
+
+	requestURL, err := url.Parse(fullURL)
+	if err != nil {
+		return nil, fmt.Errorf("invalid url: %w", err)
+	}
+
+	if queryParams != nil {
+		query := requestURL.Query()
+		for k, values := range *queryParams {
+			for _, v := range values {
+				query.Add(k, v)
+			}
+		}
+		requestURL.RawQuery = query.Encode()
+	}
+
+	req, err := http.NewRequestWithContext(ctx, method, requestURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Set("Authorization", "Bearer "+c.token)
+	req.Header.Set("Content-Type", "application/json")
+
+	return c.httpClient.Do(req)
 }
 
 func unmarshalBody[T any](body io.ReadCloser) (T, error) {
