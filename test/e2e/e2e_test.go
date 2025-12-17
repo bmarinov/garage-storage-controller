@@ -35,7 +35,7 @@ import (
 
 	"github.com/bmarinov/garage-storage-controller/internal/garage/integrationtests"
 	"github.com/bmarinov/garage-storage-controller/internal/tests"
-	"github.com/bmarinov/garage-storage-controller/test/utils"
+	"github.com/bmarinov/garage-storage-controller/test/e2e/utils"
 )
 
 var wellKnown = struct {
