@@ -37,6 +37,9 @@ import (
 	"github.com/bmarinov/garage-storage-controller/internal/s3"
 )
 
+// todo: common finalizer name?
+const accessKeyFinalizer = "garage.getclustered.net/finalizer"
+
 // AccessKeyReconciler reconciles an AccessKey object
 type AccessKeyReconciler struct {
 	client    client.Client
@@ -56,6 +59,7 @@ type AccessKeyManager interface {
 	Create(ctx context.Context, keyName string) (s3.AccessKey, error)
 	Get(ctx context.Context, id string) (s3.AccessKey, error)
 	Lookup(ctx context.Context, search string) (s3.AccessKey, error)
+	Delete(ctx context.Context, id string) error
 }
 
 // +kubebuilder:rbac:groups=garage.getclustered.net,resources=accesskeys,verbs=get;list;watch;create;update;patch;delete
@@ -72,7 +76,31 @@ func (r *AccessKeyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		return ctrl.Result{}, err
 	}
 
-	// TODO: finalizer
+	if accessKey.DeletionTimestamp.IsZero() {
+		if !controllerutil.ContainsFinalizer(&accessKey, accessKeyFinalizer) {
+			_ = controllerutil.AddFinalizer(&accessKey, accessKeyFinalizer)
+			err = r.client.Update(ctx, &accessKey)
+			if err != nil {
+				return ctrl.Result{}, err
+			}
+		}
+	} else {
+		if controllerutil.ContainsFinalizer(&accessKey, accessKeyFinalizer) {
+			err = r.accessKey.Delete(ctx, accessKey.Status.ID)
+
+			// TODO: handle 404
+			if err != nil {
+				return ctrl.Result{}, err
+			}
+
+			_ = controllerutil.RemoveFinalizer(&accessKey, accessKeyFinalizer)
+			err = r.client.Update(ctx, &accessKey)
+			if err != nil {
+				return ctrl.Result{}, err
+			}
+		}
+		return ctrl.Result{}, err
+	}
 
 	orig := accessKey.Status.DeepCopy()
 
