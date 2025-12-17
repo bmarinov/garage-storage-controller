@@ -97,6 +97,11 @@ var _ = Describe("AccessKey Controller", func() {
 			}
 
 			By("Cleanup the specific resource instance AccessKey")
+			if len(resource.Finalizers) > 0 {
+				resource.Finalizers = []string{}
+				_ = k8sClient.Update(ctx, resource)
+			}
+
 			Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
 		})
 
@@ -252,6 +257,9 @@ var _ = Describe("AccessKey Controller", func() {
 				},
 			}
 			Expect(k8sClient.Delete(ctx, &oldKeyRes)).To(Succeed())
+			_, _ = sut.Reconcile(ctx, reconcile.Request{
+				NamespacedName: commonName,
+			})
 
 			By("manually deleting secret in envtest with no GC")
 			Expect(k8sClient.Delete(ctx, &oldSecret)).To(Succeed())

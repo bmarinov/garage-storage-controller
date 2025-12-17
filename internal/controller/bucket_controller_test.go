@@ -151,11 +151,7 @@ var _ = Describe("Bucket Controller", func() {
 				GlobalAliases: []string{bucket.Spec.Name},
 				Quotas:        s3.Quotas{},
 			}
-			controllerReconciler := &BucketReconciler{
-				Client: k8sClient,
-				Scheme: k8sClient.Scheme(),
-				bucket: s3API,
-			}
+			controllerReconciler := NewBucketReconciler(k8sClient, k8sClient.Scheme(), s3API)
 
 			// act
 			_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{NamespacedName: typeNamespacedName})
@@ -186,11 +182,8 @@ var _ = Describe("Bucket Controller", func() {
 
 			By("reconciling")
 			var s3Fake = newS3APIFake()
-			controllerReconciler := &BucketReconciler{
-				Client: k8sClient,
-				Scheme: k8sClient.Scheme(),
-				bucket: s3Fake,
-			}
+			controllerReconciler := NewBucketReconciler(k8sClient, k8sClient.Scheme(), s3Fake)
+
 			_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{NamespacedName: key})
 			Expect(err).ShouldNot(HaveOccurred())
 

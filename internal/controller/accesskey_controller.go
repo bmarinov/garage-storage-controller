@@ -88,8 +88,7 @@ func (r *AccessKeyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		if controllerutil.ContainsFinalizer(&accessKey, accessKeyFinalizer) {
 			err = r.accessKey.Delete(ctx, accessKey.Status.ID)
 
-			// TODO: handle 404
-			if err != nil {
+			if err != nil && !errors.Is(err, s3.ErrKeyNotFound) {
 				return ctrl.Result{}, err
 			}
 
