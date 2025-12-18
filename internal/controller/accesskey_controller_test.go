@@ -155,7 +155,7 @@ var _ = Describe("AccessKey Controller", func() {
 				g.Expect(k8sClient.Get(ctx, typeNamespacedName, &accessKey)).To(Succeed())
 
 				expectedKey := extAPI.keys[0]
-				g.Expect(accessKey.Status.ID).To(Equal(expectedKey.ID))
+				g.Expect(accessKey.Status.AccessKeyID).To(Equal(expectedKey.ID))
 				g.Expect(accessKey.Status.SecretName).To(Equal(accessKey.Spec.SecretName))
 
 			}).Should(Succeed())
@@ -185,7 +185,7 @@ var _ = Describe("AccessKey Controller", func() {
 				var secretRes corev1.Secret
 				_ = k8sClient.Get(ctx, types.NamespacedName{Namespace: accessKey.Namespace, Name: accessKey.Spec.SecretName}, &secretRes)
 
-				g.Expect(string(secretRes.Data["accessKeyId"])).To(Equal(accessKey.Status.ID))
+				g.Expect(string(secretRes.Data["accessKeyId"])).To(Equal(accessKey.Status.AccessKeyID))
 				g.Expect(string(secretRes.Data["secretAccessKey"])).To(Equal(extAPI.keys[0].Secret))
 			}).Should(Succeed())
 			By("setting top-level Ready when access key and secret are ready")
@@ -242,7 +242,7 @@ var _ = Describe("AccessKey Controller", func() {
 
 			By("fetching remote key")
 			_ = k8sClient.Get(ctx, commonName, &oldKeyRes)
-			oldKeyID := oldKeyRes.Status.ID
+			oldKeyID := oldKeyRes.Status.AccessKeyID
 			Expect(oldKeyID).ToNot(BeEmpty())
 			oldRemoteKey, err := externalAPI.Get(ctx, oldKeyID)
 
@@ -287,7 +287,7 @@ var _ = Describe("AccessKey Controller", func() {
 			Expect(err).To(Succeed())
 
 			By("comparing old and new IDs")
-			Expect(newKey.Status.ID).To(Not(Equal(oldKeyID)))
+			Expect(newKey.Status.AccessKeyID).To(Not(Equal(oldKeyID)))
 		})
 		It("should reconcile after transient error on create", func() {
 			sut, externalAPI := setup()
@@ -323,7 +323,7 @@ var _ = Describe("AccessKey Controller", func() {
 			Expect(k8sClient.Get(ctx, resourceName, &retrievedKey)).To(Succeed())
 
 			By("storing existing external key ID in status")
-			Expect(retrievedKey.Status.ID).To(Equal(externalKey.ID),
+			Expect(retrievedKey.Status.AccessKeyID).To(Equal(externalKey.ID),
 				"should not create new key")
 		})
 		It("should replace secret on spec change", func() {
@@ -338,7 +338,7 @@ var _ = Describe("AccessKey Controller", func() {
 			oldSecretID := types.NamespacedName{Name: accessKey.Spec.SecretName, Namespace: accessKey.Namespace}
 			var oldSecret corev1.Secret
 			Expect(k8sClient.Get(ctx, oldSecretID, &oldSecret)).To(Succeed())
-			existingExtKey, _ := externalAPI.Get(ctx, accessKey.Status.ID)
+			existingExtKey, _ := externalAPI.Get(ctx, accessKey.Status.AccessKeyID)
 
 			By("change secret name in spec")
 			accessKey.Spec.SecretName = "changed-name-workload-foo123"
@@ -351,7 +351,7 @@ var _ = Describe("AccessKey Controller", func() {
 			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: accessKey.Spec.SecretName, Namespace: accessKey.Namespace}, &newSecret)).
 				To(Succeed())
 			_ = k8sClient.Get(ctx, typeNamespacedName, &accessKey)
-			Expect(accessKey.Status.ID).To(Equal(existingExtKey.ID), "key ID should not change")
+			Expect(accessKey.Status.AccessKeyID).To(Equal(existingExtKey.ID), "key ID should not change")
 
 			Expect(newSecret.Data["accessKeyId"]).To(Equal(oldSecret.Data["accessKeyId"]))
 			Expect(newSecret.Data["secretAccessKey"]).To(Equal(oldSecret.Data["secretAccessKey"]))
@@ -397,10 +397,10 @@ var _ = Describe("AccessKey Controller", func() {
 
 			By("new access key ID stored in status")
 			_ = k8sClient.Get(ctx, resourceName, &accessKey)
-			newKey, err := externalAPI.Get(ctx, accessKey.Status.ID)
+			newKey, err := externalAPI.Get(ctx, accessKey.Status.AccessKeyID)
 			Expect(err).ToNot(HaveOccurred())
 
-			Expect(accessKey.Status.ID).To(Equal(newKey.ID))
+			Expect(accessKey.Status.AccessKeyID).To(Equal(newKey.ID))
 
 			By("access key in namespace secret")
 			var newSecret corev1.Secret
@@ -434,7 +434,7 @@ var _ = Describe("AccessKey Controller", func() {
 				_ = k8sClient.Get(ctx, objID, &accessKey)
 				finalizers := accessKey.GetFinalizers()
 				return finalizers
-			}).Should(ContainElement(accessKeyFinalizer), "should register finalizer")
+			}).Should(ContainElement(finalizerName), "should register finalizer")
 
 			By("deleting AccessKey resource")
 			Expect(k8sClient.Delete(ctx, &accessKey)).To(Succeed())

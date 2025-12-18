@@ -46,6 +46,7 @@ type BucketStatus struct {
 	// +optional
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
 
+	// The external Bucket identifier.
 	// +optional
 	BucketID string `json:"bucketId,omitempty"`
 

@@ -37,9 +37,6 @@ import (
 	"github.com/bmarinov/garage-storage-controller/internal/s3"
 )
 
-// todo: common finalizer name?
-const accessKeyFinalizer = "garage.getclustered.net/finalizer"
-
 // AccessKeyReconciler reconciles an AccessKey object
 type AccessKeyReconciler struct {
 	client    client.Client
@@ -77,22 +74,22 @@ func (r *AccessKeyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	}
 
 	if accessKey.DeletionTimestamp.IsZero() {
-		if !controllerutil.ContainsFinalizer(&accessKey, accessKeyFinalizer) {
-			_ = controllerutil.AddFinalizer(&accessKey, accessKeyFinalizer)
+		if !controllerutil.ContainsFinalizer(&accessKey, finalizerName) {
+			_ = controllerutil.AddFinalizer(&accessKey, finalizerName)
 			err = r.client.Update(ctx, &accessKey)
 			if err != nil {
 				return ctrl.Result{}, err
 			}
 		}
 	} else {
-		if controllerutil.ContainsFinalizer(&accessKey, accessKeyFinalizer) {
-			err = r.accessKey.Delete(ctx, accessKey.Status.ID)
+		if controllerutil.ContainsFinalizer(&accessKey, finalizerName) {
+			err = r.accessKey.Delete(ctx, accessKey.Status.AccessKeyID)
 
 			if err != nil && !errors.Is(err, s3.ErrKeyNotFound) {
 				return ctrl.Result{}, err
 			}
 
-			_ = controllerutil.RemoveFinalizer(&accessKey, accessKeyFinalizer)
+			_ = controllerutil.RemoveFinalizer(&accessKey, finalizerName)
 			err = r.client.Update(ctx, &accessKey)
 			if err != nil {
 				return ctrl.Result{}, err
@@ -124,7 +121,7 @@ func (r *AccessKeyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 func (r *AccessKeyReconciler) reconcileAccessKey(ctx context.Context, key *AccessKey) error {
 	if key.Object.Status.ObservedGeneration == key.Object.Generation &&
 		key.AccessKeyCondition().Status == metav1.ConditionTrue &&
-		key.Object.Status.ID != "" {
+		key.Object.Status.AccessKeyID != "" {
 		// object exists
 		return nil
 	}
@@ -139,7 +136,7 @@ func (r *AccessKeyReconciler) reconcileAccessKey(ctx context.Context, key *Acces
 		return err
 	}
 
-	key.Object.Status.ID = externalKey.ID
+	key.Object.Status.AccessKeyID = externalKey.ID
 	markAccessKeyReady(key.Object)
 
 	err = r.ensureSecret(ctx, *key.Object, externalKey.Secret)
@@ -185,11 +182,11 @@ func (r *AccessKeyReconciler) ensureExternalKey(ctx context.Context, resource ga
 	logger := logf.FromContext(ctx)
 	externalKeyName := namespacedResourceName(resource.ObjectMeta)
 
-	if resource.Status.ID != "" {
-		existing, err := r.accessKey.Get(ctx, resource.Status.ID)
+	if resource.Status.AccessKeyID != "" {
+		existing, err := r.accessKey.Get(ctx, resource.Status.AccessKeyID)
 		if err != nil {
 			if errors.Is(err, s3.ErrKeyNotFound) {
-				logger.Info("ensuring external key: none found with stale Status.ID, recreating", "keyID", resource.Status.ID, "err", err)
+				logger.Info("ensuring external key: none found with stale Status.ID, recreating", "keyID", resource.Status.AccessKeyID, "err", err)
 				return r.accessKey.Create(ctx, externalKeyName)
 			} else {
 				return s3.AccessKey{}, fmt.Errorf("verifying existing key: %w", err)
@@ -235,7 +232,7 @@ func (r *AccessKeyReconciler) ensureSecret(ctx context.Context,
 
 	_, err = controllerutil.CreateOrUpdate(ctx, r.client, &secretRes, func() error {
 		secretRes.Data = map[string][]byte{
-			"accessKeyId":     []byte(parent.Status.ID),
+			"accessKeyId":     []byte(parent.Status.AccessKeyID),
 			"secretAccessKey": []byte(secret),
 		}
 		return nil

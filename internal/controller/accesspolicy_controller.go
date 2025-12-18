@@ -30,6 +30,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
@@ -75,6 +76,34 @@ func (r *AccessPolicyReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	if err != nil {
 		if apierrors.IsNotFound(err) {
 			return ctrl.Result{}, nil
+		}
+		return ctrl.Result{}, err
+	}
+
+	if policy.DeletionTimestamp.IsZero() {
+		if !controllerutil.ContainsFinalizer(&policy, finalizerName) {
+			_ = controllerutil.AddFinalizer(&policy, finalizerName)
+			err = r.client.Update(ctx, &policy)
+			if err != nil {
+				return ctrl.Result{}, err
+			}
+		}
+	} else {
+		if controllerutil.ContainsFinalizer(&policy, finalizerName) {
+			err = r.adminClient.SetPermissions(ctx,
+				policy.Status.AccessKeyID,
+				policy.Status.BucketID,
+				s3.Permissions{})
+			// TODO: 404s
+			if err != nil && !errors.Is(err, s3.ErrKeyNotFound) {
+				return ctrl.Result{}, err
+			}
+
+			_ = controllerutil.RemoveFinalizer(&policy, finalizerName)
+			err = r.client.Update(ctx, &policy)
+			if err != nil {
+				return ctrl.Result{}, err
+			}
 		}
 		return ctrl.Result{}, err
 	}
@@ -142,7 +171,7 @@ func (r *AccessPolicyReconciler) reconcilePolicy(ctx context.Context, policy *ga
 	}
 
 	err = r.adminClient.SetPermissions(ctx,
-		accessKey.Status.ID,
+		accessKey.Status.AccessKeyID,
 		bucket.Status.BucketID,
 		s3.Permissions{
 			Read:  policy.Spec.Permissions.Read,
@@ -177,6 +206,7 @@ func (r *AccessPolicyReconciler) checkBucket(ctx context.Context,
 			return nil, fmt.Errorf("unexpected error getting bucket: %w", err)
 		}
 	} else {
+		policy.Status.BucketID = bucket.Status.BucketID
 		bucketCond := meta.FindStatusCondition(bucket.Status.Conditions, Ready)
 		if bucketCond == nil || bucketCond.Status != metav1.ConditionTrue {
 			message := "Bucket condition not met"
@@ -213,6 +243,7 @@ func (r *AccessPolicyReconciler) checkAccessKey(
 			return nil, fmt.Errorf("unexpected error gettig access key: %w", err)
 		}
 	} else {
+		policy.Status.AccessKeyID = accessKey.Status.AccessKeyID
 		accessKeyCond := meta.FindStatusCondition(accessKey.Status.Conditions, Ready)
 		if accessKeyCond == nil || accessKeyCond.Status != metav1.ConditionTrue {
 			message := "AccessKey condition not met"

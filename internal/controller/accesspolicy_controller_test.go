@@ -18,6 +18,7 @@ package controller
 
 import (
 	"context"
+	"fmt"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -84,7 +85,6 @@ var _ = Describe("AccessPolicy Controller", func() {
 				markSecretReady(&k)
 				updateAccessKeyCondition(&k)
 				Expect(k8sClient.Status().Patch(ctx, &k, client.Merge, client.FieldOwner(bucketControllerName))).To(Succeed())
-
 			}
 
 			p := garagev1alpha1.AccessPolicy{
@@ -103,7 +103,7 @@ var _ = Describe("AccessPolicy Controller", func() {
 			Expect(k8sClient.Create(ctx, &p)).To(Succeed())
 			objID := types.NamespacedName{Namespace: namespace, Name: p.Name}
 
-			sut := NewAccessPolicyReconciler(k8sClient, k8sClient.Scheme(), &permissionClientStub{})
+			sut := NewAccessPolicyReconciler(k8sClient, k8sClient.Scheme(), newPermissionClientFake())
 			_, err := sut.Reconcile(ctx,
 				reconcile.Request{NamespacedName: objID})
 			Expect(err).ToNot(HaveOccurred(), "should reschedule and not err")
@@ -176,7 +176,7 @@ var _ = Describe("AccessPolicy Controller", func() {
 			objID := types.NamespacedName{Name: p.Name,
 				Namespace: p.Namespace}
 
-			sut := NewAccessPolicyReconciler(k8sClient, k8sClient.Scheme(), &permissionClientStub{})
+			sut := NewAccessPolicyReconciler(k8sClient, k8sClient.Scheme(), newPermissionClientFake())
 			_, err := sut.Reconcile(ctx,
 				reconcile.Request{NamespacedName: objID})
 			Expect(err).ToNot(HaveOccurred())
@@ -204,7 +204,10 @@ var _ = Describe("AccessPolicy Controller", func() {
 			Expect(k8sClient.Create(ctx, &bucketRes)).To(Succeed())
 			markBucketReady(&bucketRes)
 			updateBucketReadyCondition(&bucketRes)
+			// set status fields to fake readiness
+			bucketRes.Status.BucketID = fixture.RandAlpha(12)
 			Expect(k8sClient.Status().Patch(ctx, &bucketRes, client.Merge, client.FieldOwner(bucketControllerName))).To(Succeed())
+
 			keyRes := garagev1alpha1.AccessKey{
 				ObjectMeta: metav1.ObjectMeta{Name: accessKeyName, Namespace: namespace},
 				Spec:       garagev1alpha1.AccessKeySpec{SecretName: "zzz-ns-secret"},
@@ -213,6 +216,8 @@ var _ = Describe("AccessPolicy Controller", func() {
 
 			markAccessKeyReady(&keyRes)
 			markSecretReady(&keyRes)
+			// set status fields to fake readiness
+			keyRes.Status.AccessKeyID = fixture.RandAlpha(12)
 			updateAccessKeyCondition(&keyRes)
 			Expect(k8sClient.Status().Patch(ctx, &keyRes, client.Merge, client.FieldOwner(bucketControllerName))).To(Succeed())
 
@@ -233,7 +238,7 @@ var _ = Describe("AccessPolicy Controller", func() {
 			Expect(k8sClient.Create(ctx, &policy)).To(Succeed())
 
 			By("reconciling policy")
-			sut := NewAccessPolicyReconciler(k8sClient, k8sClient.Scheme(), &permissionClientStub{})
+			sut := NewAccessPolicyReconciler(k8sClient, k8sClient.Scheme(), newPermissionClientFake())
 			objID := types.NamespacedName{
 				Namespace: policy.Namespace,
 				Name:      policy.Name,
@@ -252,17 +257,97 @@ var _ = Describe("AccessPolicy Controller", func() {
 			Expect(readyCond.Status).To(Equal(metav1.ConditionTrue))
 			Expect(readyCond.ObservedGeneration).To(Equal(reconciled.GetGeneration()),
 				"status and object generation should be equal")
+
+			By("storing external resource IDs in status")
+			Expect(reconciled.Status.BucketID).ToNot(BeEmpty())
+			Expect(reconciled.Status.AccessKeyID).ToNot(BeEmpty())
+		})
+
+		It("should remove key access on deletion", func() {
+			bucketName := fixture.RandAlpha(12)
+			accessKeyName := fixture.RandAlpha(12)
+			b := garagev1alpha1.Bucket{
+				ObjectMeta: metav1.ObjectMeta{Name: bucketName, Namespace: namespace},
+				Spec:       garagev1alpha1.BucketSpec{Name: "blap-bucket3132"},
+			}
+			_ = k8sClient.Create(ctx, &b)
+
+			markBucketReady(&b)
+			updateBucketReadyCondition(&b)
+			_ = k8sClient.Status().Patch(ctx, &b, client.Merge, client.FieldOwner(bucketControllerName))
+			k := garagev1alpha1.AccessKey{
+				ObjectMeta: metav1.ObjectMeta{Name: accessKeyName, Namespace: namespace},
+				Spec:       garagev1alpha1.AccessKeySpec{SecretName: "zzz-ns-secret"},
+			}
+			_ = k8sClient.Create(ctx, &k)
+
+			markAccessKeyReady(&k)
+			markSecretReady(&k)
+			updateAccessKeyCondition(&k)
+			_ = k8sClient.Status().Patch(ctx, &k, client.Merge, client.FieldOwner(bucketControllerName))
+
+			By("creating access policy for bucket")
+			policy := garagev1alpha1.AccessPolicy{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "testpolicy",
+					Namespace: namespace,
+				},
+				Spec: garagev1alpha1.AccessPolicySpec{
+					AccessKey: accessKeyName,
+					Bucket:    bucketName,
+					Permissions: garagev1alpha1.Permissions{
+						Read:  true,
+						Write: true,
+						Owner: true,
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, &policy)).To(Succeed())
+
+			sut, apiClient := setupPolicyTest()
+			objID := types.NamespacedName{Name: policy.Name, Namespace: policy.Namespace}
+			_, _ = sut.Reconcile(ctx,
+				reconcile.Request{NamespacedName: objID})
+
+			By("verifying permissions set")
+			Expect(apiClient.assignedPermissions).To(HaveLen(1))
+
+			By("deleting AccessPolicy")
+			Expect(k8sClient.Delete(ctx, &policy)).To(Succeed())
+			Eventually(func(g Gomega) bool {
+				g.Expect(k8sClient.Get(ctx, objID, &policy)).To(Succeed())
+				return !policy.DeletionTimestamp.IsZero()
+			}).Should(BeTrue(), "should have deletion timestamp")
+
+			By("reconciling removes external access")
+			_, _ = sut.Reconcile(ctx, reconcile.Request{NamespacedName: objID})
+
+			Expect(apiClient.assignedPermissions[fmt.Sprintf("%s:%s", k.Status.AccessKeyID, b.Status.BucketID)]).
+				To(Equal(s3.Permissions{Owner: false, Read: false, Write: false}))
 		})
 	})
 })
 
-type permissionClientStub struct {
+func setupPolicyTest() (*AccessPolicyReconciler, *permissionClientFake) {
+	apiClient := newPermissionClientFake()
+	return NewAccessPolicyReconciler(k8sClient, k8sClient.Scheme(), apiClient), apiClient
+}
+
+type permissionClientFake struct {
+	assignedPermissions map[string]s3.Permissions
+}
+
+func newPermissionClientFake() *permissionClientFake {
+	return &permissionClientFake{
+		assignedPermissions: make(map[string]s3.Permissions),
+	}
 }
 
 // SetPermissions implements PermissionClient.
-func (p *permissionClientStub) SetPermissions(ctx context.Context, keyID string, bucketID string, permissions s3.Permissions) error {
-
+func (p *permissionClientFake) SetPermissions(ctx context.Context, keyID string, bucketID string, permissions s3.Permissions) error {
+	key := fmt.Sprintf("%s:%s", keyID, bucketID)
+	p.assignedPermissions[key] = permissions
 	return nil
 }
 
-var _ PermissionClient = &permissionClientStub{}
+var _ PermissionClient = &permissionClientFake{}

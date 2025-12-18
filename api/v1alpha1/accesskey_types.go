@@ -48,7 +48,7 @@ type AccessKeyStatus struct {
 
 	// The external Access Key identifier.
 	// +optional
-	ID string `json:"id,omitempty"`
+	AccessKeyID string `json:"accessKeyId,omitempty"`
 
 	// SecretName is the name of the secret created to store the access key.
 	// It holds the reference to the previously created secret on spec changes.

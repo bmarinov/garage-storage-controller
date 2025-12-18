@@ -76,6 +76,11 @@ spec:
           status:
             description: status defines the observed state of AccessPolicy
             properties:
+              accessKeyId:
+                description: The external Access Key identifier.
+                type: string
+              bucketId:
+                type: string
               conditions:
                 description: The status of each condition is one of True, False, or
                   Unknown.
