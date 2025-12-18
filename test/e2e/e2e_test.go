@@ -28,6 +28,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -147,6 +148,9 @@ var _ = Describe("Manager", Ordered, func() {
 		By("cleaning up the curl pod for metrics")
 		cmd := exec.Command("kubectl", "delete", "pod", "curl-metrics", "-n", namespace)
 		_, _ = utils.Run(cmd)
+
+		By("removing finalizers")
+		removeFinalizers("accesspolicies", "accesskeys", "buckets")
 
 		By("undeploying the controller-manager")
 		cmd = exec.Command("make", "undeploy")
@@ -380,6 +384,27 @@ var _ = Describe("Manager", Ordered, func() {
 		// TBD: webhooks or validation?
 	})
 })
+
+// removeFinalizers ensures that resources can be deleted during teardown.
+func removeFinalizers(crds ...string) {
+	for _, crd := range crds {
+		cmd := exec.Command(
+			"kubectl", "get", crd, "-A", "-o", "jsonpath={range .items[*]}{.metadata.namespace}/{.metadata.name}{\"\\n\"}{end}")
+		out, err := utils.Run(cmd)
+		if err == nil && len(out) > 0 {
+			resources := strings.Split(strings.TrimSpace(string(out)), "\n")
+			for _, resource := range resources {
+				parts := strings.Split(resource, "/")
+				if len(parts) == 2 {
+					ns, name := parts[0], parts[1]
+					cmd = exec.Command("kubectl", "patch", crd, name, "-n", ns,
+						"--type=json", "-p", `[{"op":"remove","path":"/metadata/finalizers"}]`)
+					_, _ = utils.Run(cmd)
+				}
+			}
+		}
+	}
+}
 
 // serviceAccountToken returns a token for the specified service account in the given namespace.
 // It uses the Kubernetes TokenRequest API to generate a token by directly sending a request
