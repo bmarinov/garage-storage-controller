@@ -85,7 +85,7 @@ func (r *AccessKeyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		if controllerutil.ContainsFinalizer(&accessKey, finalizerName) {
 			err = r.accessKey.Delete(ctx, accessKey.Status.AccessKeyID)
 
-			if err != nil && !errors.Is(err, s3.ErrKeyNotFound) {
+			if err != nil && !errors.Is(err, s3.ErrResourceNotFound) {
 				return ctrl.Result{}, err
 			}
 
@@ -185,7 +185,7 @@ func (r *AccessKeyReconciler) ensureExternalKey(ctx context.Context, resource ga
 	if resource.Status.AccessKeyID != "" {
 		existing, err := r.accessKey.Get(ctx, resource.Status.AccessKeyID)
 		if err != nil {
-			if errors.Is(err, s3.ErrKeyNotFound) {
+			if errors.Is(err, s3.ErrResourceNotFound) {
 				logger.Info("ensuring external key: none found with stale Status.ID, recreating", "keyID", resource.Status.AccessKeyID, "err", err)
 				return r.accessKey.Create(ctx, externalKeyName)
 			} else {
@@ -197,7 +197,7 @@ func (r *AccessKeyReconciler) ensureExternalKey(ctx context.Context, resource ga
 	}
 	existingKey, err := r.accessKey.Lookup(ctx, externalKeyName)
 	if err != nil {
-		if errors.Is(err, s3.ErrKeyNotFound) {
+		if errors.Is(err, s3.ErrResourceNotFound) {
 			newKey, err := r.accessKey.Create(ctx, externalKeyName)
 			return newKey, err
 		} else {

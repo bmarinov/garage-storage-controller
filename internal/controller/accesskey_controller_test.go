@@ -481,7 +481,7 @@ func (a *accessMgrFake) Get(ctx context.Context, id string) (s3.AccessKey, error
 			return v, nil
 		}
 	}
-	return s3.AccessKey{}, s3.ErrKeyNotFound
+	return s3.AccessKey{}, s3.ErrResourceNotFound
 }
 
 // Lookup implements AccessKeyManager.
@@ -491,7 +491,7 @@ func (a *accessMgrFake) Lookup(ctx context.Context, search string) (s3.AccessKey
 			return v, nil
 		}
 	}
-	return s3.AccessKey{}, s3.ErrKeyNotFound
+	return s3.AccessKey{}, s3.ErrResourceNotFound
 }
 
 // Create implements AccessKeyManager.
@@ -519,7 +519,7 @@ func (a *accessMgrFake) Delete(ctx context.Context, id string) error {
 			return nil
 		}
 	}
-	return s3.ErrKeyNotFound
+	return s3.ErrResourceNotFound
 }
 
 var _ AccessKeyManager = &accessMgrFake{}

@@ -3,10 +3,9 @@ package s3
 import "errors"
 
 var (
-	ErrBucketExists   = errors.New("bucket with alias already exists")
-	ErrBucketNotFound = errors.New("bucket not found")
+	ErrBucketExists = errors.New("bucket with alias already exists")
 
-	ErrKeyNotFound = errors.New("access key not found")
+	ErrResourceNotFound = errors.New("resource not found")
 )
 
 type Bucket struct {

@@ -82,8 +82,8 @@ func TestBucketClient(t *testing.T) {
 			if err == nil {
 				t.Fatal("expected error for not found")
 			}
-			if !errors.Is(err, s3.ErrBucketNotFound) {
-				t.Errorf("expected error %v got %v", s3.ErrBucketNotFound, err)
+			if !errors.Is(err, s3.ErrResourceNotFound) {
+				t.Errorf("expected error %v got %v", s3.ErrResourceNotFound, err)
 			}
 		})
 	})
@@ -113,8 +113,8 @@ func TestBucketClient(t *testing.T) {
 		t.Run("unknown bucket ID", func(t *testing.T) {
 			unknownID := integrationtests.GenerateRandomString(hex.EncodeToString)
 			err := sut.Update(t.Context(), unknownID, s3.Quotas{MaxObjects: 3})
-			if err == nil || !errors.Is(err, s3.ErrBucketNotFound) {
-				t.Fatalf("expected error %v got %v", s3.ErrBucketNotFound, err)
+			if err == nil || !errors.Is(err, s3.ErrResourceNotFound) {
+				t.Fatalf("expected error %v got %v", s3.ErrResourceNotFound, err)
 			}
 		})
 	})
@@ -186,8 +186,8 @@ func TestAccessKeyClient(t *testing.T) {
 
 		t.Run("ID not found", func(t *testing.T) {
 			_, err := sut.Get(t.Context(), "foo123-unknown-key")
-			if err == nil || !errors.Is(err, s3.ErrKeyNotFound) {
-				t.Errorf("expected error %v got %v", s3.ErrKeyNotFound, err)
+			if err == nil || !errors.Is(err, s3.ErrResourceNotFound) {
+				t.Errorf("expected error %v got %v", s3.ErrResourceNotFound, err)
 			}
 		})
 	})
@@ -211,7 +211,7 @@ func TestAccessKeyClient(t *testing.T) {
 			if err == nil {
 				t.Fatal("expected error got nil")
 			}
-			if !errors.Is(err, s3.ErrKeyNotFound) {
+			if !errors.Is(err, s3.ErrResourceNotFound) {
 				t.Errorf("unexpected error %v", err)
 			}
 		})
@@ -228,14 +228,14 @@ func TestAccessKeyClient(t *testing.T) {
 			}
 
 			_, err = sut.Get(ctx, key.ID)
-			if err == nil || !errors.Is(err, s3.ErrKeyNotFound) {
+			if err == nil || !errors.Is(err, s3.ErrResourceNotFound) {
 				t.Errorf("expected error, got %v", err)
 			}
 		})
 		t.Run("key not found", func(t *testing.T) {
 			unknownKey := fixture.RandAlpha(16)
 			err := sut.Delete(ctx, unknownKey)
-			if err == nil || !errors.Is(err, s3.ErrKeyNotFound) {
+			if err == nil || !errors.Is(err, s3.ErrResourceNotFound) {
 				t.Errorf("expected err, got %v", err)
 			}
 		})
@@ -365,6 +365,9 @@ func TestPermissionsClient(t *testing.T) {
 			if err == nil {
 				t.Fatal("expected error for invalid key ID")
 			}
+			if !errors.Is(err, s3.ErrResourceNotFound) {
+				t.Errorf("expected %v got %v", s3.ErrResourceNotFound, err)
+			}
 		})
 		t.Run("bucket with ID does not exist", func(t *testing.T) {
 			keyClient := garage.AccessKeyClient
@@ -375,6 +378,9 @@ func TestPermissionsClient(t *testing.T) {
 			err := sut.SetPermissions(ctx, key.ID, unknownBucketID, s3.Permissions{Write: true})
 			if err == nil {
 				t.Fatal("expected error when bucket ID not found")
+			}
+			if !errors.Is(err, s3.ErrResourceNotFound) {
+				t.Errorf("expected %v got %v", s3.ErrResourceNotFound, err)
 			}
 		})
 	})

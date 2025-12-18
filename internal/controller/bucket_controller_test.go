@@ -246,7 +246,7 @@ func (s *s3APIFake) Create(ctx context.Context, globalAlias string) (s3.Bucket, 
 func (s *s3APIFake) Update(ctx context.Context, id string, quotas s3.Quotas) error {
 	b, got := s.buckets[id]
 	if !got {
-		return s3.ErrBucketNotFound
+		return s3.ErrResourceNotFound
 	}
 
 	b.Quotas.MaxObjects = quotas.MaxObjects
@@ -263,7 +263,7 @@ func (s *s3APIFake) Get(ctx context.Context, globalAlias string) (s3.Bucket, err
 			return v, nil
 		}
 	}
-	return s3.Bucket{}, s3.ErrBucketNotFound
+	return s3.Bucket{}, s3.ErrResourceNotFound
 }
 
 var _ BucketClient = &s3APIFake{}

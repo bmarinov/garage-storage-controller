@@ -125,7 +125,7 @@ func (a *AccessKeyClient) Delete(ctx context.Context, id string) error {
 	}()
 	if response.StatusCode != http.StatusOK {
 		if response.StatusCode == http.StatusNotFound {
-			return fmt.Errorf("delete key %s: %w", id, s3.ErrKeyNotFound)
+			return fmt.Errorf("delete key %s: %w", id, s3.ErrResourceNotFound)
 		}
 		return fmt.Errorf("delete key: unexpected status code %d", response.StatusCode)
 	}
@@ -154,12 +154,12 @@ func (a *AccessKeyClient) get(ctx context.Context, id string, search string, ret
 	}()
 	if response.StatusCode != http.StatusOK {
 		if response.StatusCode == http.StatusNotFound {
-			return AccessKeyResponse{}, fmt.Errorf("%w: id '%s'; search '%s'", s3.ErrKeyNotFound, id, search)
+			return AccessKeyResponse{}, fmt.Errorf("%w: id '%s'; search '%s'", s3.ErrResourceNotFound, id, search)
 		}
 		// TODO: inspect server side code, why bad request? workaround:
 		if response.StatusCode == http.StatusBadRequest &&
 			search != "" && id == "" {
-			return AccessKeyResponse{}, fmt.Errorf("bad request looking for key with search term %s: %w", search, s3.ErrKeyNotFound)
+			return AccessKeyResponse{}, fmt.Errorf("bad request looking for key with search term %s: %w", search, s3.ErrResourceNotFound)
 		}
 		return AccessKeyResponse{}, fmt.Errorf("unexpected status code %d", response.StatusCode)
 	}
@@ -220,7 +220,7 @@ func (b *BucketClient) Get(ctx context.Context, globalAlias string) (s3.Bucket, 
 	}()
 	if resp.StatusCode != http.StatusOK {
 		if resp.StatusCode == http.StatusNotFound {
-			return s3.Bucket{}, fmt.Errorf("%w: with alias %s", s3.ErrBucketNotFound, globalAlias)
+			return s3.Bucket{}, fmt.Errorf("%w: with alias %s", s3.ErrResourceNotFound, globalAlias)
 		}
 		return s3.Bucket{}, fmt.Errorf("unexpected status code %d", resp.StatusCode)
 	}
@@ -261,7 +261,7 @@ func (b *BucketClient) Update(ctx context.Context, id string, quotas s3.Quotas) 
 	}()
 	if response.StatusCode != http.StatusOK {
 		if response.StatusCode == http.StatusNotFound {
-			return fmt.Errorf("update bucket: %w for id '%s'", s3.ErrBucketNotFound, id)
+			return fmt.Errorf("update bucket: %w for id '%s'", s3.ErrResourceNotFound, id)
 		}
 		body, _ := io.ReadAll(response.Body)
 		return fmt.Errorf("update bucket: unexpected status code %d: %s", response.StatusCode, string(body))
@@ -291,6 +291,9 @@ func (p *PermissionClient) SetPermissions(ctx context.Context,
 		return err
 	}
 
+	if !permissions.Owner && !permissions.Read && !permissions.Write {
+		return nil
+	}
 	err = p.allowBucketKey(ctx, keyID, bucketID, permissions)
 	if err != nil {
 		return err
@@ -379,7 +382,10 @@ func (p *PermissionClient) denyBucketKey(ctx context.Context,
 
 	if response.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(response.Body)
-		return fmt.Errorf("update bucket: unexpected status code %d: %s", response.StatusCode, string(body))
+		if response.StatusCode == http.StatusNotFound {
+			return fmt.Errorf("%w: %v", s3.ErrResourceNotFound, string(body))
+		}
+		return fmt.Errorf("deny bucket key: unexpected status code %d: %s", response.StatusCode, string(body))
 	}
 
 	return nil

@@ -94,8 +94,7 @@ func (r *AccessPolicyReconciler) Reconcile(ctx context.Context, req ctrl.Request
 				policy.Status.AccessKeyID,
 				policy.Status.BucketID,
 				s3.Permissions{})
-			// TODO: 404s
-			if err != nil && !errors.Is(err, s3.ErrKeyNotFound) {
+			if err != nil && !errors.Is(err, s3.ErrResourceNotFound) {
 				return ctrl.Result{}, err
 			}
 

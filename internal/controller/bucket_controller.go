@@ -102,7 +102,7 @@ func (r *BucketReconciler) reconcileBucket(ctx context.Context, bucket *garagev1
 	alias := bucket.Spec.Name
 	s3Bucket, err := r.bucket.Get(ctx, alias)
 	if err != nil {
-		if errors.Is(err, s3.ErrBucketNotFound) {
+		if errors.Is(err, s3.ErrResourceNotFound) {
 			s3Bucket, err = r.bucket.Create(ctx, alias)
 			if err != nil {
 				markBucketNotReady(
