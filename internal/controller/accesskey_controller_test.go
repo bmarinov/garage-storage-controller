@@ -19,6 +19,7 @@ package controller
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/google/uuid"
@@ -35,6 +36,7 @@ import (
 
 	garagev1alpha1 "github.com/bmarinov/garage-storage-controller/api/v1alpha1"
 	"github.com/bmarinov/garage-storage-controller/internal/s3"
+	"github.com/bmarinov/garage-storage-controller/internal/tests/fixture"
 )
 
 var _ = Describe("AccessKey Controller", func() {
@@ -48,7 +50,18 @@ var _ = Describe("AccessKey Controller", func() {
 			Namespace: "default",
 		}
 
+		var namespace string
+
 		BeforeEach(func() {
+			By("setting up namespace")
+			namespace = fixture.RandAlpha(10)
+			testNs := corev1.Namespace{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: namespace,
+				},
+			}
+			Expect(k8sClient.Create(ctx, &testNs)).To(Succeed())
+
 			By("creating the custom resource for the Kind AccessKey")
 			accesskey := &garagev1alpha1.AccessKey{}
 			err := k8sClient.Get(ctx, typeNamespacedName, accesskey)
@@ -71,6 +84,9 @@ var _ = Describe("AccessKey Controller", func() {
 		})
 
 		AfterEach(func() {
+			ns := corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: namespace}}
+			Expect(k8sClient.Delete(ctx, &ns)).To(Succeed())
+
 			resource := &garagev1alpha1.AccessKey{}
 			err := k8sClient.Get(ctx, typeNamespacedName, resource)
 			Expect(err).NotTo(HaveOccurred())
@@ -81,6 +97,11 @@ var _ = Describe("AccessKey Controller", func() {
 			}
 
 			By("Cleanup the specific resource instance AccessKey")
+			if len(resource.Finalizers) > 0 {
+				resource.Finalizers = []string{}
+				_ = k8sClient.Update(ctx, resource)
+			}
+
 			Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
 		})
 
@@ -134,7 +155,7 @@ var _ = Describe("AccessKey Controller", func() {
 				g.Expect(k8sClient.Get(ctx, typeNamespacedName, &accessKey)).To(Succeed())
 
 				expectedKey := extAPI.keys[0]
-				g.Expect(accessKey.Status.ID).To(Equal(expectedKey.ID))
+				g.Expect(accessKey.Status.AccessKeyID).To(Equal(expectedKey.ID))
 				g.Expect(accessKey.Status.SecretName).To(Equal(accessKey.Spec.SecretName))
 
 			}).Should(Succeed())
@@ -164,7 +185,7 @@ var _ = Describe("AccessKey Controller", func() {
 				var secretRes corev1.Secret
 				_ = k8sClient.Get(ctx, types.NamespacedName{Namespace: accessKey.Namespace, Name: accessKey.Spec.SecretName}, &secretRes)
 
-				g.Expect(string(secretRes.Data["accessKeyId"])).To(Equal(accessKey.Status.ID))
+				g.Expect(string(secretRes.Data["accessKeyId"])).To(Equal(accessKey.Status.AccessKeyID))
 				g.Expect(string(secretRes.Data["secretAccessKey"])).To(Equal(extAPI.keys[0].Secret))
 			}).Should(Succeed())
 			By("setting top-level Ready when access key and secret are ready")
@@ -221,7 +242,7 @@ var _ = Describe("AccessKey Controller", func() {
 
 			By("fetching remote key")
 			_ = k8sClient.Get(ctx, commonName, &oldKeyRes)
-			oldKeyID := oldKeyRes.Status.ID
+			oldKeyID := oldKeyRes.Status.AccessKeyID
 			Expect(oldKeyID).ToNot(BeEmpty())
 			oldRemoteKey, err := externalAPI.Get(ctx, oldKeyID)
 
@@ -236,6 +257,9 @@ var _ = Describe("AccessKey Controller", func() {
 				},
 			}
 			Expect(k8sClient.Delete(ctx, &oldKeyRes)).To(Succeed())
+			_, _ = sut.Reconcile(ctx, reconcile.Request{
+				NamespacedName: commonName,
+			})
 
 			By("manually deleting secret in envtest with no GC")
 			Expect(k8sClient.Delete(ctx, &oldSecret)).To(Succeed())
@@ -263,7 +287,7 @@ var _ = Describe("AccessKey Controller", func() {
 			Expect(err).To(Succeed())
 
 			By("comparing old and new IDs")
-			Expect(newKey.Status.ID).To(Not(Equal(oldKeyID)))
+			Expect(newKey.Status.AccessKeyID).To(Not(Equal(oldKeyID)))
 		})
 		It("should reconcile after transient error on create", func() {
 			sut, externalAPI := setup()
@@ -299,7 +323,7 @@ var _ = Describe("AccessKey Controller", func() {
 			Expect(k8sClient.Get(ctx, resourceName, &retrievedKey)).To(Succeed())
 
 			By("storing existing external key ID in status")
-			Expect(retrievedKey.Status.ID).To(Equal(externalKey.ID),
+			Expect(retrievedKey.Status.AccessKeyID).To(Equal(externalKey.ID),
 				"should not create new key")
 		})
 		It("should replace secret on spec change", func() {
@@ -314,7 +338,7 @@ var _ = Describe("AccessKey Controller", func() {
 			oldSecretID := types.NamespacedName{Name: accessKey.Spec.SecretName, Namespace: accessKey.Namespace}
 			var oldSecret corev1.Secret
 			Expect(k8sClient.Get(ctx, oldSecretID, &oldSecret)).To(Succeed())
-			existingExtKey, _ := externalAPI.Get(ctx, accessKey.Status.ID)
+			existingExtKey, _ := externalAPI.Get(ctx, accessKey.Status.AccessKeyID)
 
 			By("change secret name in spec")
 			accessKey.Spec.SecretName = "changed-name-workload-foo123"
@@ -327,7 +351,7 @@ var _ = Describe("AccessKey Controller", func() {
 			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: accessKey.Spec.SecretName, Namespace: accessKey.Namespace}, &newSecret)).
 				To(Succeed())
 			_ = k8sClient.Get(ctx, typeNamespacedName, &accessKey)
-			Expect(accessKey.Status.ID).To(Equal(existingExtKey.ID), "key ID should not change")
+			Expect(accessKey.Status.AccessKeyID).To(Equal(existingExtKey.ID), "key ID should not change")
 
 			Expect(newSecret.Data["accessKeyId"]).To(Equal(oldSecret.Data["accessKeyId"]))
 			Expect(newSecret.Data["secretAccessKey"]).To(Equal(oldSecret.Data["secretAccessKey"]))
@@ -373,10 +397,10 @@ var _ = Describe("AccessKey Controller", func() {
 
 			By("new access key ID stored in status")
 			_ = k8sClient.Get(ctx, resourceName, &accessKey)
-			newKey, err := externalAPI.Get(ctx, accessKey.Status.ID)
+			newKey, err := externalAPI.Get(ctx, accessKey.Status.AccessKeyID)
 			Expect(err).ToNot(HaveOccurred())
 
-			Expect(accessKey.Status.ID).To(Equal(newKey.ID))
+			Expect(accessKey.Status.AccessKeyID).To(Equal(newKey.ID))
 
 			By("access key in namespace secret")
 			var newSecret corev1.Secret
@@ -388,6 +412,49 @@ var _ = Describe("AccessKey Controller", func() {
 			Expect(string(newSecret.Data["accessKeyId"])).To(Equal(newKey.ID))
 			Expect(string(newSecret.Data["secretAccessKey"])).To(Equal(newKey.Secret))
 		})
+		It("removes external key when resource is deleted", func() {
+			sut, externalAPI := setup()
+
+			accessKey := garagev1alpha1.AccessKey{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      fixture.RandAlpha(10),
+					Namespace: namespace,
+				},
+				Spec: garagev1alpha1.AccessKeySpec{
+					SecretName: fixture.RandAlpha(10),
+				},
+			}
+			Expect(k8sClient.Create(ctx, &accessKey)).To(Succeed())
+			objID := types.NamespacedName{Name: accessKey.Name, Namespace: accessKey.Namespace}
+
+			_, err := sut.Reconcile(ctx, reconcile.Request{NamespacedName: objID})
+			Expect(err).ToNot(HaveOccurred())
+
+			Eventually(func() []string {
+				_ = k8sClient.Get(ctx, objID, &accessKey)
+				finalizers := accessKey.GetFinalizers()
+				return finalizers
+			}).Should(ContainElement(finalizerName), "should register finalizer")
+
+			By("deleting AccessKey resource")
+			Expect(k8sClient.Delete(ctx, &accessKey)).To(Succeed())
+
+			Eventually(func(g Gomega) bool {
+				g.Expect(k8sClient.Get(ctx, objID, &accessKey)).To(Succeed())
+				hasDeletionTS := !accessKey.DeletionTimestamp.IsZero()
+				return hasDeletionTS
+			}).Should(BeTrue(), "resource should exist with deletion timestamp")
+
+			By("reconciling AccessKey")
+			_, err = sut.Reconcile(ctx, reconcile.Request{NamespacedName: objID})
+			Expect(err).ToNot(HaveOccurred())
+
+			By("external key and resource removed")
+			Expect(externalAPI.keys).To(BeEmpty())
+			err = k8sClient.Get(ctx, objID, &accessKey)
+			Expect(err).To(Satisfy(apierrors.IsNotFound))
+		})
+
 		// more tests:
 		// - naming conflict with existing corev1 secret
 	})
@@ -414,7 +481,7 @@ func (a *accessMgrFake) Get(ctx context.Context, id string) (s3.AccessKey, error
 			return v, nil
 		}
 	}
-	return s3.AccessKey{}, s3.ErrKeyNotFound
+	return s3.AccessKey{}, s3.ErrResourceNotFound
 }
 
 // Lookup implements AccessKeyManager.
@@ -424,7 +491,7 @@ func (a *accessMgrFake) Lookup(ctx context.Context, search string) (s3.AccessKey
 			return v, nil
 		}
 	}
-	return s3.AccessKey{}, s3.ErrKeyNotFound
+	return s3.AccessKey{}, s3.ErrResourceNotFound
 }
 
 // Create implements AccessKeyManager.
@@ -442,6 +509,17 @@ func (a *accessMgrFake) Create(ctx context.Context, keyName string) (s3.AccessKe
 	}
 	a.keys = append(a.keys, key)
 	return key, nil
+}
+
+// Delete implements AccessKeyManager.
+func (a *accessMgrFake) Delete(ctx context.Context, id string) error {
+	for idx, key := range a.keys {
+		if key.ID == id {
+			a.keys = slices.Delete(a.keys, idx, idx+1)
+			return nil
+		}
+	}
+	return s3.ErrResourceNotFound
 }
 
 var _ AccessKeyManager = &accessMgrFake{}

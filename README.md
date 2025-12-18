@@ -1,9 +1,19 @@
-Storage controller for S3-compatible backends.
+Storage controller for Garage (S3-compatible) clusters.
 ---
 
 ## Overview
 
 __garage-storage-controller__ handles bucket and access key management for [Garage](https://garagehq.deuxfleurs.fr/) storage clusters. 
+
+### Project status
+
+This project is in alpha and should be considered a technical preview. Core functionality is present, but some edge cases and common errors are not yet handled.
+
+CRDs are still alpha, following is subject to change:
+- Use units for `maxSize` (e.g. "10Gi").
+- Differentiate between exact and derived resource names.
+
+API will stabilize as soon as the project hits beta state.
 
 ### Quick start
 
@@ -59,7 +69,16 @@ Creating and managing storage buckets through Kubernetes API resources should be
 
 ## Install
 
+### Configuration
+
+| Env variable        | Description                                                    |
+| ------------------- | -------------------------------------------------------------- |
+| GARAGE_API_ENDPOINT | Endpoint address of the Garage admin API.                      |
+| GARAGE_API_TOKEN    | API key used to authenticate requests to the Garage admin API. |
+
 ### Manifests
+
+TBD
 
 ```sh
 kubectl apply foo/crds.yaml
@@ -69,13 +88,6 @@ kubectl apply foo/bar.yaml
 ### Helm
 
 TBD
-
-### Configuration
-
-| Env variable        | Description                                                    |
-| ------------------- | -------------------------------------------------------------- |
-| GARAGE_API_ENDPOINT | Endpoint address of the Garage admin API.                      |
-| GARAGE_API_TOKEN    | API key used to authenticate requests to the Garage admin API. |
 
 ### RBAC
 

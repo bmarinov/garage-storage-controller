@@ -10,6 +10,8 @@ import (
 // Ready is the top-level ready condition for a resource.
 const Ready string = "Ready"
 
+const finalizerName = "garage.getclustered.net/finalizer"
+
 const (
 	defaultReadyReason  = "Ready"
 	defaultReadyMessage = "All conditions met"

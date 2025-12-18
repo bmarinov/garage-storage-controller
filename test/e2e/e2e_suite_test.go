@@ -28,7 +28,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	"github.com/bmarinov/garage-storage-controller/test/utils"
+	"github.com/bmarinov/garage-storage-controller/test/e2e/utils"
 )
 
 var (

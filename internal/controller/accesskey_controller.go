@@ -56,6 +56,7 @@ type AccessKeyManager interface {
 	Create(ctx context.Context, keyName string) (s3.AccessKey, error)
 	Get(ctx context.Context, id string) (s3.AccessKey, error)
 	Lookup(ctx context.Context, search string) (s3.AccessKey, error)
+	Delete(ctx context.Context, id string) error
 }
 
 // +kubebuilder:rbac:groups=garage.getclustered.net,resources=accesskeys,verbs=get;list;watch;create;update;patch;delete
@@ -72,7 +73,30 @@ func (r *AccessKeyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		return ctrl.Result{}, err
 	}
 
-	// TODO: finalizer
+	if accessKey.DeletionTimestamp.IsZero() {
+		if !controllerutil.ContainsFinalizer(&accessKey, finalizerName) {
+			_ = controllerutil.AddFinalizer(&accessKey, finalizerName)
+			err = r.client.Update(ctx, &accessKey)
+			if err != nil {
+				return ctrl.Result{}, err
+			}
+		}
+	} else {
+		if controllerutil.ContainsFinalizer(&accessKey, finalizerName) {
+			err = r.accessKey.Delete(ctx, accessKey.Status.AccessKeyID)
+
+			if err != nil && !errors.Is(err, s3.ErrResourceNotFound) {
+				return ctrl.Result{}, err
+			}
+
+			_ = controllerutil.RemoveFinalizer(&accessKey, finalizerName)
+			err = r.client.Update(ctx, &accessKey)
+			if err != nil {
+				return ctrl.Result{}, err
+			}
+		}
+		return ctrl.Result{}, err
+	}
 
 	orig := accessKey.Status.DeepCopy()
 
@@ -97,7 +121,7 @@ func (r *AccessKeyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 func (r *AccessKeyReconciler) reconcileAccessKey(ctx context.Context, key *AccessKey) error {
 	if key.Object.Status.ObservedGeneration == key.Object.Generation &&
 		key.AccessKeyCondition().Status == metav1.ConditionTrue &&
-		key.Object.Status.ID != "" {
+		key.Object.Status.AccessKeyID != "" {
 		// object exists
 		return nil
 	}
@@ -112,7 +136,7 @@ func (r *AccessKeyReconciler) reconcileAccessKey(ctx context.Context, key *Acces
 		return err
 	}
 
-	key.Object.Status.ID = externalKey.ID
+	key.Object.Status.AccessKeyID = externalKey.ID
 	markAccessKeyReady(key.Object)
 
 	err = r.ensureSecret(ctx, *key.Object, externalKey.Secret)
@@ -158,11 +182,11 @@ func (r *AccessKeyReconciler) ensureExternalKey(ctx context.Context, resource ga
 	logger := logf.FromContext(ctx)
 	externalKeyName := namespacedResourceName(resource.ObjectMeta)
 
-	if resource.Status.ID != "" {
-		existing, err := r.accessKey.Get(ctx, resource.Status.ID)
+	if resource.Status.AccessKeyID != "" {
+		existing, err := r.accessKey.Get(ctx, resource.Status.AccessKeyID)
 		if err != nil {
-			if errors.Is(err, s3.ErrKeyNotFound) {
-				logger.Info("ensuring external key: none found with stale Status.ID, recreating", "keyID", resource.Status.ID, "err", err)
+			if errors.Is(err, s3.ErrResourceNotFound) {
+				logger.Info("ensuring external key: none found with stale Status.ID, recreating", "keyID", resource.Status.AccessKeyID, "err", err)
 				return r.accessKey.Create(ctx, externalKeyName)
 			} else {
 				return s3.AccessKey{}, fmt.Errorf("verifying existing key: %w", err)
@@ -173,7 +197,7 @@ func (r *AccessKeyReconciler) ensureExternalKey(ctx context.Context, resource ga
 	}
 	existingKey, err := r.accessKey.Lookup(ctx, externalKeyName)
 	if err != nil {
-		if errors.Is(err, s3.ErrKeyNotFound) {
+		if errors.Is(err, s3.ErrResourceNotFound) {
 			newKey, err := r.accessKey.Create(ctx, externalKeyName)
 			return newKey, err
 		} else {
@@ -208,7 +232,7 @@ func (r *AccessKeyReconciler) ensureSecret(ctx context.Context,
 
 	_, err = controllerutil.CreateOrUpdate(ctx, r.client, &secretRes, func() error {
 		secretRes.Data = map[string][]byte{
-			"accessKeyId":     []byte(parent.Status.ID),
+			"accessKeyId":     []byte(parent.Status.AccessKeyID),
 			"secretAccessKey": []byte(secret),
 		}
 		return nil

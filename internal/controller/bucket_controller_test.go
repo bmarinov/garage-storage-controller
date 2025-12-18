@@ -151,11 +151,7 @@ var _ = Describe("Bucket Controller", func() {
 				GlobalAliases: []string{bucket.Spec.Name},
 				Quotas:        s3.Quotas{},
 			}
-			controllerReconciler := &BucketReconciler{
-				Client: k8sClient,
-				Scheme: k8sClient.Scheme(),
-				bucket: s3API,
-			}
+			controllerReconciler := NewBucketReconciler(k8sClient, k8sClient.Scheme(), s3API)
 
 			// act
 			_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{NamespacedName: typeNamespacedName})
@@ -186,11 +182,8 @@ var _ = Describe("Bucket Controller", func() {
 
 			By("reconciling")
 			var s3Fake = newS3APIFake()
-			controllerReconciler := &BucketReconciler{
-				Client: k8sClient,
-				Scheme: k8sClient.Scheme(),
-				bucket: s3Fake,
-			}
+			controllerReconciler := NewBucketReconciler(k8sClient, k8sClient.Scheme(), s3Fake)
+
 			_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{NamespacedName: key})
 			Expect(err).ShouldNot(HaveOccurred())
 
@@ -253,7 +246,7 @@ func (s *s3APIFake) Create(ctx context.Context, globalAlias string) (s3.Bucket, 
 func (s *s3APIFake) Update(ctx context.Context, id string, quotas s3.Quotas) error {
 	b, got := s.buckets[id]
 	if !got {
-		return s3.ErrBucketNotFound
+		return s3.ErrResourceNotFound
 	}
 
 	b.Quotas.MaxObjects = quotas.MaxObjects
@@ -270,7 +263,7 @@ func (s *s3APIFake) Get(ctx context.Context, globalAlias string) (s3.Bucket, err
 			return v, nil
 		}
 	}
-	return s3.Bucket{}, s3.ErrBucketNotFound
+	return s3.Bucket{}, s3.ErrResourceNotFound
 }
 
 var _ BucketClient = &s3APIFake{}
