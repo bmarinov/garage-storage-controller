@@ -22,6 +22,13 @@ jobs:
       - name: Run unit tests
         run: make test
 
+      - name: Upload coverage reports to Codecov
+        if: github.ref == 'refs/heads/main'
+        uses: codecov/codecov-action@v5
+        with:
+          files: coverage.out
+          token: ${{ secrets.CODECOV_TOKEN }}
+
   test-e2e:
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
