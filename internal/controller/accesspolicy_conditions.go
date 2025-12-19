@@ -58,7 +58,6 @@ func markPolicyKeyReady(p *garagev1alpha1.AccessPolicy) {
 	cond := metav1.Condition{
 		Type:               PolicyAccessKeyReady,
 		Status:             metav1.ConditionTrue,
-		LastTransitionTime: metav1.Now(),
 		ObservedGeneration: p.GetGeneration(),
 		Reason:             "AccessKeyReady",
 		Message:            "AccessKey is ready for assignment",
@@ -71,7 +70,6 @@ func markPolicyBucketReady(p *garagev1alpha1.AccessPolicy) {
 	cond := metav1.Condition{
 		Type:               PolicyBucketReady,
 		Status:             metav1.ConditionTrue,
-		LastTransitionTime: metav1.Now(),
 		ObservedGeneration: p.GetGeneration(),
 		Reason:             "BucketReady",
 		Message:            "Bucket is ready for assignment",
@@ -83,7 +81,6 @@ func markPolicyAssignmentReady(p *garagev1alpha1.AccessPolicy) {
 	cond := metav1.Condition{
 		Type:               PolicyAssignmentReady,
 		Status:             metav1.ConditionTrue,
-		LastTransitionTime: metav1.Now(),
 		ObservedGeneration: p.GetGeneration(),
 		Reason:             "AccessPolicyAssigned",
 		Message:            "Access policy configured in external system.",
@@ -125,7 +122,6 @@ func updateAccessPolicyCondition(p *garagev1alpha1.AccessPolicy) {
 		Status:             readyStat,
 		Reason:             readyReason,
 		Message:            readyMessage,
-		LastTransitionTime: metav1.Now(),
 		ObservedGeneration: p.GetGeneration(),
 	}
 	meta.SetStatusCondition(&p.Status.Conditions, readyCondition)

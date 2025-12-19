@@ -26,6 +26,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/equality"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -43,6 +44,8 @@ type AccessKeyReconciler struct {
 	scheme    *runtime.Scheme
 	accessKey AccessKeyManager
 }
+
+var errNameConflict = errors.New("name conflict with existing resource")
 
 func NewAccessKeyReconciler(c client.Client, s *runtime.Scheme, keyMgr AccessKeyManager) *AccessKeyReconciler {
 	return &AccessKeyReconciler{
@@ -75,8 +78,9 @@ func (r *AccessKeyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 
 	if accessKey.DeletionTimestamp.IsZero() {
 		if !controllerutil.ContainsFinalizer(&accessKey, finalizerName) {
+			patch := client.MergeFrom(accessKey.DeepCopy())
 			_ = controllerutil.AddFinalizer(&accessKey, finalizerName)
-			err = r.client.Update(ctx, &accessKey)
+			err = r.client.Patch(ctx, &accessKey, patch)
 			if err != nil {
 				return ctrl.Result{}, err
 			}
@@ -111,7 +115,13 @@ func (r *AccessKeyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	updateAccessKeyCondition(&accessKey)
 
 	if !equality.Semantic.DeepEqual(*orig, accessKey.Status) {
-		err = r.client.Status().Patch(ctx, &accessKey, client.Merge, client.FieldOwner(bucketControllerName))
+		var a garagev1alpha1.AccessKey
+		err = r.client.Get(ctx, req.NamespacedName, &a)
+		if err != nil {
+			return ctrl.Result{}, err
+		}
+		a.Status = accessKey.Status
+		err = r.client.Status().Update(ctx, &a)
 		return ctrl.Result{}, err
 	}
 
@@ -141,6 +151,10 @@ func (r *AccessKeyReconciler) reconcileAccessKey(ctx context.Context, key *Acces
 
 	err = r.ensureSecret(ctx, *key.Object, externalKey.Secret)
 	if err != nil {
+		if errors.Is(err, errNameConflict) {
+			key.MarkNotReady(KeySecretReady, ReasonSecretNameConflict, "Conflict: %s", err.Error())
+			return nil
+		}
 		key.MarkNotReady(KeySecretReady, "SecretSetupFailed", "Failed to set up secret for credentials: %v", err)
 		return err
 	}
@@ -213,6 +227,23 @@ func (r *AccessKeyReconciler) ensureExternalKey(ctx context.Context, resource ga
 func (r *AccessKeyReconciler) ensureSecret(ctx context.Context,
 	parent garagev1alpha1.AccessKey,
 	secret string) error {
+
+	var existingSecret corev1.Secret
+	err := r.client.Get(ctx, types.NamespacedName{
+		Namespace: parent.Namespace,
+		Name:      parent.Spec.SecretName,
+	}, &existingSecret)
+
+	if err != nil && !apierrors.IsNotFound(err) {
+		return fmt.Errorf("checking for existing secret: %w", err)
+	}
+	if err == nil {
+		if !metav1.IsControlledBy(&existingSecret, &parent) {
+			return fmt.Errorf("existing secret '%s' not owned by AccessKey '%v': %w",
+				existingSecret.Name, parent.ObjectMeta, errNameConflict)
+		}
+	}
+
 	secretRes := corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      parent.Spec.SecretName,
@@ -225,7 +256,7 @@ func (r *AccessKeyReconciler) ensureSecret(ctx context.Context,
 		Data: map[string][]byte{},
 	}
 
-	err := controllerutil.SetControllerReference(&parent, &secretRes, r.scheme)
+	err = controllerutil.SetControllerReference(&parent, &secretRes, r.scheme)
 	if err != nil {
 		return fmt.Errorf("setting owner reference on secret: %w", err)
 	}

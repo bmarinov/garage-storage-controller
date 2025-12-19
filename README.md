@@ -1,6 +1,6 @@
 Storage controller for Garage (S3-compatible) clusters.
 ---
-
+[![codecov](https://codecov.io/github/bmarinov/garage-storage-controller/graph/badge.svg?token=NNYZQ863ZE)](https://codecov.io/github/bmarinov/garage-storage-controller)
 ## Overview
 
 __garage-storage-controller__ handles bucket and access key management for [Garage](https://garagehq.deuxfleurs.fr/) storage clusters. 
