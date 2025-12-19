@@ -13,8 +13,9 @@ type AccessKey struct {
 }
 
 const (
-	AccessKeyReady string = "AccessKeyReady"
-	KeySecretReady string = "KeySecretReady"
+	AccessKeyReady           string = "AccessKeyReady"
+	KeySecretReady           string = "KeySecretReady"
+	ReasonSecretNameConflict string = "SecretNameConflict"
 )
 
 func (k *AccessKey) InitializeConditions() {
@@ -97,6 +98,15 @@ func updateAccessKeyCondition(k *garagev1alpha1.AccessKey) {
 		readyStat = metav1.ConditionTrue
 		readyReason = defaultReadyReason
 		readyMessage = defaultReadyMessage
+	} else {
+		switch {
+		case accessKeyCond.Status == metav1.ConditionFalse:
+			readyReason = accessKeyCond.Reason
+			readyMessage = accessKeyCond.Message
+		case secretCond.Status == metav1.ConditionFalse:
+			readyReason = secretCond.Reason
+			readyMessage = secretCond.Message
+		}
 	}
 
 	readyCondition := metav1.Condition{

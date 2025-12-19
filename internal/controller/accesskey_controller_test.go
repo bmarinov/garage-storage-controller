@@ -50,6 +50,7 @@ var _ = Describe("AccessKey Controller", func() {
 			Namespace: "default",
 		}
 
+		// namespace generated for the test.
 		var namespace string
 
 		BeforeEach(func() {
@@ -454,11 +455,51 @@ var _ = Describe("AccessKey Controller", func() {
 			err = k8sClient.Get(ctx, objID, &accessKey)
 			Expect(err).To(Satisfy(apierrors.IsNotFound))
 		})
+		FIt("sets status when secret with name already exists", func() {
+			sut, _ := setup()
 
-		// more tests:
-		// - naming conflict with existing corev1 secret
+			By("creating existing secret")
+			secretName := "foo-bar-keys"
+			conflictingSecret := corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      secretName,
+					Namespace: namespace,
+				},
+				Data: map[string][]byte{
+					"canary": []byte("true"),
+				},
+			}
+			Expect(k8sClient.Create(ctx, &conflictingSecret)).Should(Succeed())
+
+			By("creating a key with conflicting secret name")
+			accessKey := garagev1alpha1.AccessKey{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      fixture.RandAlpha(12),
+					Namespace: namespace,
+				},
+				Spec: garagev1alpha1.AccessKeySpec{
+					SecretName: secretName,
+				},
+			}
+			Expect(k8sClient.Create(ctx, &accessKey)).Should(Succeed())
+
+			By("reconciling without error")
+			_, err := sut.Reconcile(ctx, reconcile.Request{NamespacedName: objID(accessKey.ObjectMeta)})
+			Expect(err).ToNot(HaveOccurred())
+
+			By("Failed status set")
+			_ = k8sClient.Get(ctx, objID(accessKey.ObjectMeta), &accessKey)
+			topReady := meta.FindStatusCondition(accessKey.Status.Conditions, Ready)
+			Expect(topReady).ToNot(BeNil())
+			Expect(topReady.Reason).To(Equal(ReasonSecretNameConflict), "should surface specific reason")
+		})
 	})
 })
+
+// objID creates a namespaced name from object meta.
+func objID(m metav1.ObjectMeta) types.NamespacedName {
+	return types.NamespacedName{Namespace: m.Namespace, Name: m.Name}
+}
 
 func setup() (*AccessKeyReconciler, *accessMgrFake) {
 	externalAPI := newAccessMgrFake()
