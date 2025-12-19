@@ -1,6 +1,3 @@
-//go:build e2e
-// +build e2e
-
 /*
 Copyright 2025.
 
@@ -45,6 +42,7 @@ var wellKnown = struct {
 	bucketName       string
 	accessPolicyName string
 }{
+	// Keep in sync with "../../config/samples/"
 	accessKeyName:    "accesskey-sample",
 	secretName:       "foo-some-secret",
 	bucketName:       "bucket-sample",
@@ -78,9 +76,6 @@ const garageNamespace = "garage-system"
 var _ = Describe("Manager", Ordered, func() {
 	var controllerPodName string
 
-	// Before running the tests, set up the environment by creating the namespace,
-	// enforce the restricted security policy to the namespace, installing CRDs,
-	// and deploying the controller.
 	BeforeAll(func() {
 		By("creating garage namespace")
 		cmd := exec.Command("kubectl", "create", "ns", garageNamespace)
@@ -336,6 +331,9 @@ var _ = Describe("Manager", Ordered, func() {
 		})
 
 		It("should deploy external resources", func() {
+
+			// TODO: use separate manifests for the e2e tests
+
 			By("creating AccessKey API resource")
 			cmd := exec.Command("kubectl", "apply", "-f", "config/samples/garage_v1alpha1_accesskey.yaml")
 			_, err := utils.Run(cmd)
@@ -377,6 +375,21 @@ var _ = Describe("Manager", Ordered, func() {
 					"wait", "accesspolicy", wellKnown.accessPolicyName, "--for=condition=Ready", "--timeout=1s")
 				g.Expect(cmd.Run()).To(Succeed())
 			}).Should(Succeed())
+		})
+
+		It("should successfully delete resources", func() {
+			manifests := []string{
+				"config/samples/garage_v1alpha1_accesspolicy.yaml",
+				"config/samples/garage_v1alpha1_accesskey.yaml",
+				"config/samples/garage_v1alpha1_bucket.yaml",
+			}
+
+			for _, manifest := range manifests {
+				cmd := exec.Command("kubectl", "delete", "-f", manifest,
+					"--wait=true", "--timeout=30s")
+				out, err := utils.Run(cmd)
+				Expect(err).ToNot(HaveOccurred(), out)
+			}
 		})
 
 		// +kubebuilder:scaffold:e2e-webhooks-checks
