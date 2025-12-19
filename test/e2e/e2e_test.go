@@ -1,6 +1,3 @@
-//go:build e2e
-// +build e2e
-
 /*
 Copyright 2025.
 
@@ -45,6 +42,7 @@ var wellKnown = struct {
 	bucketName       string
 	accessPolicyName string
 }{
+	// Keep in sync with "../../config/samples/"
 	accessKeyName:    "accesskey-sample",
 	secretName:       "foo-some-secret",
 	bucketName:       "bucket-sample",
