@@ -33,7 +33,6 @@ func markBucketReady(b *garagev1alpha1.Bucket) {
 	cond := metav1.Condition{
 		Type:               BucketReady,
 		Status:             metav1.ConditionTrue,
-		LastTransitionTime: metav1.Now(),
 		ObservedGeneration: b.Generation,
 		Reason:             "BucketReady",
 		Message:            "Bucket resource is ready",
@@ -59,7 +58,6 @@ func updateBucketReadyCondition(b *garagev1alpha1.Bucket) {
 		Status:             readyStat,
 		Reason:             readyReason,
 		Message:            readyMessage,
-		LastTransitionTime: metav1.Now(),
 		ObservedGeneration: b.GetGeneration(),
 	}
 	meta.SetStatusCondition(&b.Status.Conditions, readyCondition)

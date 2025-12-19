@@ -2,6 +2,7 @@ package controller
 
 import (
 	"fmt"
+	"slices"
 
 	garagev1alpha1 "github.com/bmarinov/garage-storage-controller/api/v1alpha1"
 	"k8s.io/apimachinery/pkg/api/meta"
@@ -27,7 +28,6 @@ func markAccessKeyReady(k *garagev1alpha1.AccessKey) {
 	cond := metav1.Condition{
 		Type:               AccessKeyReady,
 		Status:             metav1.ConditionTrue,
-		LastTransitionTime: metav1.Now(),
 		ObservedGeneration: k.GetGeneration(),
 		Reason:             "AccessKeyReady",
 		Message:            "External access key is ready",
@@ -56,7 +56,6 @@ func (k *AccessKey) MarkNotReady(condType string,
 	cond := metav1.Condition{
 		Type:               condType,
 		Status:             metav1.ConditionFalse,
-		LastTransitionTime: metav1.Now(),
 		Reason:             reason,
 		Message:            fmt.Sprintf(message, args...),
 		ObservedGeneration: k.Object.Generation,
@@ -73,7 +72,6 @@ func markSecretReady(k *garagev1alpha1.AccessKey) {
 	cond := metav1.Condition{
 		Type:               KeySecretReady,
 		Status:             metav1.ConditionTrue,
-		LastTransitionTime: metav1.Now(),
 		ObservedGeneration: k.GetGeneration(),
 		Reason:             "SecretReady",
 		Message:            "Secret for external access key is ready",
@@ -114,12 +112,19 @@ func updateAccessKeyCondition(k *garagev1alpha1.AccessKey) {
 		Status:             readyStat,
 		Reason:             readyReason,
 		Message:            readyMessage,
-		LastTransitionTime: metav1.Now(),
 		ObservedGeneration: k.GetGeneration(),
 	}
 	meta.SetStatusCondition(&k.Status.Conditions, readyCondition)
 
-	if readyCondition.Status == metav1.ConditionTrue {
+	if readyCondition.Status == metav1.ConditionTrue || isPermanentFailure(readyCondition.Reason) {
 		k.Status.ObservedGeneration = k.GetGeneration()
 	}
+}
+
+var failureReasons []string = []string{
+	ReasonSecretNameConflict,
+}
+
+func isPermanentFailure(reason string) bool {
+	return slices.Contains(failureReasons, reason)
 }

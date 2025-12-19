@@ -78,8 +78,9 @@ func (r *AccessKeyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 
 	if accessKey.DeletionTimestamp.IsZero() {
 		if !controllerutil.ContainsFinalizer(&accessKey, finalizerName) {
+			patch := client.MergeFrom(accessKey.DeepCopy())
 			_ = controllerutil.AddFinalizer(&accessKey, finalizerName)
-			err = r.client.Update(ctx, &accessKey)
+			err = r.client.Patch(ctx, &accessKey, patch)
 			if err != nil {
 				return ctrl.Result{}, err
 			}

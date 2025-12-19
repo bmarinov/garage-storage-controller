@@ -13,21 +13,18 @@ const Ready string = "Ready"
 const finalizerName = "garage.getclustered.net/finalizer"
 
 const (
-	defaultReadyReason  = "Ready"
+	defaultReadyReason  = "Available"
 	defaultReadyMessage = "All conditions met"
 )
 
 func initResourceConditions(allConditions []string, conditions *[]metav1.Condition) {
-	now := metav1.Now()
-
 	for _, cond := range allConditions {
 		if meta.FindStatusCondition(*conditions, cond) == nil {
 			cond := metav1.Condition{
-				Type:               cond,
-				Status:             metav1.ConditionUnknown,
-				LastTransitionTime: now,
-				Reason:             "Pending",
-				Message:            "Condition unknown",
+				Type:    cond,
+				Status:  metav1.ConditionUnknown,
+				Reason:  "Pending",
+				Message: "Condition unknown",
 			}
 			meta.SetStatusCondition(conditions, cond)
 		}
@@ -44,7 +41,6 @@ func markNotReady(
 	cond := metav1.Condition{
 		Type:               condType,
 		Status:             metav1.ConditionFalse,
-		LastTransitionTime: metav1.Now(),
 		Reason:             reason,
 		Message:            fmt.Sprintf(message, args...),
 		ObservedGeneration: objMeta.GetGeneration(),

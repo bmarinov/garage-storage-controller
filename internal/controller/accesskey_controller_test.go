@@ -455,7 +455,7 @@ var _ = Describe("AccessKey Controller", func() {
 			err = k8sClient.Get(ctx, objID, &accessKey)
 			Expect(err).To(Satisfy(apierrors.IsNotFound))
 		})
-		FIt("sets status when secret with name already exists", func() {
+		It("sets status when secret with name already exists", func() {
 			sut, _ := setup()
 
 			By("creating existing secret")

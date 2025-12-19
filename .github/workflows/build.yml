@@ -22,7 +22,7 @@ jobs:
       - name: Run unit tests
         run: make test
 
-      - name: Upload coverage reports to Codecov
+      - name: Upload coverage report
         if: github.ref == 'refs/heads/main'
         uses: codecov/codecov-action@v5
         with:
