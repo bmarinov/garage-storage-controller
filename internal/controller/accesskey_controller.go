@@ -115,7 +115,13 @@ func (r *AccessKeyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	updateAccessKeyCondition(&accessKey)
 
 	if !equality.Semantic.DeepEqual(*orig, accessKey.Status) {
-		err = r.client.Status().Patch(ctx, &accessKey, client.Merge, client.FieldOwner(bucketControllerName))
+		var a garagev1alpha1.AccessKey
+		err = r.client.Get(ctx, req.NamespacedName, &a)
+		if err != nil {
+			return ctrl.Result{}, err
+		}
+		a.Status = accessKey.Status
+		err = r.client.Status().Update(ctx, &a)
 		return ctrl.Result{}, err
 	}
 
