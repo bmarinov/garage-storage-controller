@@ -276,7 +276,7 @@ var _ = Describe("AccessPolicy Controller", func() {
 			Expect(reconciled.Labels[accesskeyLabel]).To(Equal(reconciled.Spec.AccessKey))
 		})
 
-		It("should remove key access on deletion", func() {
+		It("should remove access grant on deletion", func() {
 			bucketName := fixture.RandAlpha(12)
 			accessKeyName := fixture.RandAlpha(12)
 			b := garagev1alpha1.Bucket{
@@ -340,6 +340,76 @@ var _ = Describe("AccessPolicy Controller", func() {
 
 			Expect(apiClient.assignedPermissions[fmt.Sprintf("%s:%s", k.Status.AccessKeyID, b.Status.BucketID)]).
 				To(Equal(s3.Permissions{Owner: false, Read: false, Write: false}))
+		})
+		It("updates policy status on dependency deletion", func() {
+			By("creating dependencies")
+			bucketName := fixture.RandAlpha(12)
+			accessKeyName := fixture.RandAlpha(12)
+			b := garagev1alpha1.Bucket{
+				ObjectMeta: metav1.ObjectMeta{Name: bucketName, Namespace: namespace},
+				Spec:       garagev1alpha1.BucketSpec{Name: fixture.RandAlpha(8)},
+			}
+			_ = k8sClient.Create(ctx, &b)
+
+			markBucketReady(&b)
+			updateBucketReadyCondition(&b)
+			_ = k8sClient.Status().Patch(ctx, &b, client.Merge, client.FieldOwner(bucketControllerName))
+			key := garagev1alpha1.AccessKey{
+				ObjectMeta: metav1.ObjectMeta{Name: accessKeyName, Namespace: namespace},
+				Spec:       garagev1alpha1.AccessKeySpec{SecretName: fixture.RandAlpha(8)},
+			}
+			_ = k8sClient.Create(ctx, &key)
+
+			markAccessKeyReady(&key)
+			markSecretReady(&key)
+			updateAccessKeyCondition(&key)
+			_ = k8sClient.Status().Patch(ctx, &key, client.Merge, client.FieldOwner(bucketControllerName))
+
+			By("creating policy")
+			policy := garagev1alpha1.AccessPolicy{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      fixture.RandAlpha(8),
+					Namespace: namespace,
+				},
+				Spec: garagev1alpha1.AccessPolicySpec{
+					AccessKey: accessKeyName,
+					Bucket:    bucketName,
+					Permissions: garagev1alpha1.Permissions{
+						Read: true,
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, &policy)).To(Succeed())
+
+			sut, _ := setupPolicyTest()
+			objID := types.NamespacedName{Name: policy.Name, Namespace: policy.Namespace}
+
+			By("reconciling")
+			Eventually(func(g Gomega) {
+				_, err := sut.Reconcile(ctx,
+					reconcile.Request{NamespacedName: objID})
+				g.Expect(err).ToNot(HaveOccurred())
+
+				var reconciled garagev1alpha1.AccessPolicy
+				_ = k8sClient.Get(ctx, objID, &reconciled)
+
+				readyCond := meta.FindStatusCondition(reconciled.Status.Conditions, Ready)
+				g.Expect(readyCond).ToNot(BeNil())
+				g.Expect(readyCond.Status).To(Equal(metav1.ConditionTrue))
+			}).Should(Succeed())
+
+			By("deleting AccessKey")
+
+			Expect(k8sClient.Delete(ctx, &key)).To(Succeed())
+
+			_, _ = sut.Reconcile(ctx,
+				reconcile.Request{NamespacedName: objID})
+
+			_ = k8sClient.Get(ctx, objID, &policy)
+			topReady := meta.FindStatusCondition(policy.Status.Conditions, Ready)
+			Expect(topReady.Status).To(Equal(metav1.ConditionFalse), "should detect AccessKey change")
+
+			// todo: ensure access revocation on Garage?
 		})
 	})
 })
