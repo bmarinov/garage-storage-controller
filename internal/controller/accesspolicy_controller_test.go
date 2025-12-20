@@ -104,16 +104,19 @@ var _ = Describe("AccessPolicy Controller", func() {
 			objID := types.NamespacedName{Namespace: namespace, Name: p.Name}
 
 			sut := NewAccessPolicyReconciler(k8sClient, k8sClient.Scheme(), newPermissionClientFake())
-			_, err := sut.Reconcile(ctx,
-				reconcile.Request{NamespacedName: objID})
-			Expect(err).ToNot(HaveOccurred(), "should reschedule and not err")
 
-			var policy garagev1alpha1.AccessPolicy
-			_ = k8sClient.Get(ctx, objID, &policy)
+			Eventually(func(g Gomega) {
+				_, err := sut.Reconcile(ctx,
+					reconcile.Request{NamespacedName: objID})
+				g.Expect(err).ToNot(HaveOccurred(), "should reschedule and not err")
+				var policy garagev1alpha1.AccessPolicy
+				_ = k8sClient.Get(ctx, objID, &policy)
 
-			readyCond := meta.FindStatusCondition(policy.Status.Conditions, Ready)
-			Expect(readyCond.Status).To(Equal(metav1.ConditionFalse), "Ready condition has unexpected status")
-			Expect(readyCond.Reason).To(Equal(expectedReason), "Specific reason should propagate")
+				readyCond := meta.FindStatusCondition(policy.Status.Conditions, Ready)
+				g.Expect(readyCond).ToNot(BeNil())
+				Expect(readyCond.Status).To(Equal(metav1.ConditionFalse), "Ready condition has unexpected status")
+				Expect(readyCond.Reason).To(Equal(expectedReason), "Specific reason should propagate")
+			}).Should(Succeed())
 		},
 			Entry("bucket missing", false, true, ReasonBucketMissing),
 			Entry("key missing", true, false, ReasonAccessKeyMissing),
@@ -156,8 +159,7 @@ var _ = Describe("AccessPolicy Controller", func() {
 			updateAccessKeyCondition(&k)
 			Expect(k8sClient.Status().Patch(ctx, &k, client.Merge, client.FieldOwner(bucketControllerName))).To(Succeed())
 
-			By("create and reconcile policy")
-
+			By("creating policy")
 			p := garagev1alpha1.AccessPolicy{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "testpolicy",
@@ -176,16 +178,20 @@ var _ = Describe("AccessPolicy Controller", func() {
 			objID := types.NamespacedName{Name: p.Name,
 				Namespace: p.Namespace}
 
-			sut := NewAccessPolicyReconciler(k8sClient, k8sClient.Scheme(), newPermissionClientFake())
-			_, err := sut.Reconcile(ctx,
-				reconcile.Request{NamespacedName: objID})
-			Expect(err).ToNot(HaveOccurred())
+			By("reconciling reaches ready status")
+			Eventually(func(g Gomega) {
+				sut := NewAccessPolicyReconciler(k8sClient, k8sClient.Scheme(), newPermissionClientFake())
+				_, err := sut.Reconcile(ctx,
+					reconcile.Request{NamespacedName: objID})
+				g.Expect(err).ToNot(HaveOccurred())
 
-			var reconciled garagev1alpha1.AccessPolicy
-			_ = k8sClient.Get(ctx, objID, &reconciled)
+				var reconciled garagev1alpha1.AccessPolicy
+				_ = k8sClient.Get(ctx, objID, &reconciled)
 
-			readyCond := meta.FindStatusCondition(reconciled.Status.Conditions, Ready)
-			Expect(readyCond.Status).To(Equal(expectedStatus))
+				readyCond := meta.FindStatusCondition(reconciled.Status.Conditions, Ready)
+				g.Expect(readyCond).ToNot(BeNil())
+				g.Expect(readyCond.Status).To(Equal(expectedStatus))
+			}).Should(Succeed())
 		},
 			Entry("bucket not ready", false, true, metav1.ConditionFalse),
 			Entry("access key not ready", true, false, metav1.ConditionFalse),
@@ -237,33 +243,37 @@ var _ = Describe("AccessPolicy Controller", func() {
 			}
 			Expect(k8sClient.Create(ctx, &policy)).To(Succeed())
 
-			By("reconciling policy")
 			sut := NewAccessPolicyReconciler(k8sClient, k8sClient.Scheme(), newPermissionClientFake())
 			objID := types.NamespacedName{
 				Namespace: policy.Namespace,
 				Name:      policy.Name,
 			}
 
-			_, err := sut.Reconcile(ctx, reconcile.Request{NamespacedName: objID})
-			Expect(err).ToNot(HaveOccurred())
-
-			By("setting access policy and top-level Ready status")
+			By("reconciling sets policy and top-level Ready status")
 			var reconciled garagev1alpha1.AccessPolicy
-			_ = k8sClient.Get(ctx, objID, &reconciled)
+			Eventually(func(g Gomega) {
+				_, err := sut.Reconcile(ctx, reconcile.Request{NamespacedName: objID})
+				g.Expect(err).ToNot(HaveOccurred())
 
-			policyCond := meta.FindStatusCondition(reconciled.Status.Conditions, PolicyAssignmentReady)
-			Expect(policyCond.Status).To(Equal(metav1.ConditionTrue))
-			readyCond := meta.FindStatusCondition(reconciled.Status.Conditions, Ready)
-			Expect(readyCond.Status).To(Equal(metav1.ConditionTrue))
-			Expect(readyCond.ObservedGeneration).To(Equal(reconciled.GetGeneration()),
-				"status and object generation should be equal")
+				_ = k8sClient.Get(ctx, objID, &reconciled)
+
+				policyCond := meta.FindStatusCondition(reconciled.Status.Conditions, PolicyAssignmentReady)
+				g.Expect(policyCond).ToNot(BeNil())
+				g.Expect(policyCond.Status).To(Equal(metav1.ConditionTrue))
+
+				readyCond := meta.FindStatusCondition(reconciled.Status.Conditions, Ready)
+				g.Expect(readyCond).ToNot(BeNil())
+				g.Expect(readyCond.Status).To(Equal(metav1.ConditionTrue))
+				g.Expect(readyCond.ObservedGeneration).To(Equal(reconciled.GetGeneration()),
+					"status and object generation should be equal")
+			}).Should(Succeed())
 
 			By("storing external resource IDs in status")
 			Expect(reconciled.Status.BucketID).ToNot(BeEmpty())
 			Expect(reconciled.Status.AccessKeyID).ToNot(BeEmpty())
 
 			By("storing name of accesskey resource in policy label")
-			Expect(reconciled.Labels[accessKeyName]).To(Equal(reconciled.Spec.AccessKey))
+			Expect(reconciled.Labels[accesskeyLabel]).To(Equal(reconciled.Spec.AccessKey))
 		})
 
 		It("should remove key access on deletion", func() {
@@ -309,11 +319,14 @@ var _ = Describe("AccessPolicy Controller", func() {
 
 			sut, apiClient := setupPolicyTest()
 			objID := types.NamespacedName{Name: policy.Name, Namespace: policy.Namespace}
-			_, _ = sut.Reconcile(ctx,
-				reconcile.Request{NamespacedName: objID})
 
-			By("verifying permissions set")
-			Expect(apiClient.assignedPermissions).To(HaveLen(1))
+			By("reconciling and setting external permissions")
+			Eventually(func(g Gomega) {
+				_, _ = sut.Reconcile(ctx,
+					reconcile.Request{NamespacedName: objID})
+
+				g.Expect(apiClient.assignedPermissions).To(HaveLen(1))
+			}).Should(Succeed())
 
 			By("deleting AccessPolicy")
 			Expect(k8sClient.Delete(ctx, &policy)).To(Succeed())
