@@ -162,16 +162,23 @@ var _ = Describe("Manager", Ordered, func() {
 
 	AfterEach(func() {
 		specReport := CurrentSpecReport()
-		if specReport.Failed() {
-			By("Fetching controller manager pod logs")
-			cmd := exec.Command("kubectl", "logs", controllerPodName, "-n", namespace)
-			controllerLogs, err := utils.Run(cmd)
-			if err == nil {
-				_, _ = fmt.Fprintf(GinkgoWriter, "Controller logs:\n %s", controllerLogs)
-			} else {
-				_, _ = fmt.Fprintf(GinkgoWriter, "Failed to get Controller logs: %s", err)
-			}
 
+		By("fetching controller logs")
+		cmd := exec.Command("kubectl", "logs", controllerPodName, "-n", namespace)
+		controllerLogs, err := utils.Run(cmd)
+
+		if err == nil {
+			if strings.Contains(controllerLogs, "\tERROR\t") {
+				_, _ = fmt.Fprintf(GinkgoWriter, "ERROR found in controller logs:\n%s\n", controllerLogs)
+				Fail("Controller logged ERROR during test")
+			} else if specReport.Failed() {
+				_, _ = fmt.Fprintf(GinkgoWriter, "Controller logs:\n %s", controllerLogs)
+			}
+		} else {
+			_, _ = fmt.Fprintf(GinkgoWriter, "Failed to get Controller logs: %s", err)
+		}
+
+		if specReport.Failed() {
 			By("Fetching Kubernetes events")
 			cmd = exec.Command("kubectl", "get", "events", "-n", namespace, "--sort-by=.lastTimestamp")
 			eventsOutput, err := utils.Run(cmd)
@@ -398,7 +405,7 @@ var _ = Describe("Manager", Ordered, func() {
 	})
 })
 
-// removeFinalizers ensures that resources can be deleted during teardown.
+// removeFinalizers ensures that leftover resources can be deleted during teardown.
 func removeFinalizers(crds ...string) {
 	for _, crd := range crds {
 		cmd := exec.Command(

@@ -31,6 +31,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+	"sigs.k8s.io/controller-runtime/pkg/handler"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
@@ -80,31 +81,40 @@ func (r *AccessPolicyReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		return ctrl.Result{}, err
 	}
 
+	metaChanged := r.ensureLabels(ctx, &policy)
+
 	if policy.DeletionTimestamp.IsZero() {
 		if !controllerutil.ContainsFinalizer(&policy, finalizerName) {
-			_ = controllerutil.AddFinalizer(&policy, finalizerName)
-			err = r.client.Update(ctx, &policy)
-			if err != nil {
-				return ctrl.Result{}, err
+			modified := controllerutil.AddFinalizer(&policy, finalizerName)
+			if modified {
+				metaChanged = true
 			}
 		}
 	} else {
-		if controllerutil.ContainsFinalizer(&policy, finalizerName) {
-			err = r.adminClient.SetPermissions(ctx,
-				policy.Status.AccessKeyID,
-				policy.Status.BucketID,
-				s3.Permissions{})
-			if err != nil && !errors.Is(err, s3.ErrResourceNotFound) {
-				return ctrl.Result{}, err
-			}
-
-			_ = controllerutil.RemoveFinalizer(&policy, finalizerName)
-			err = r.client.Update(ctx, &policy)
-			if err != nil {
-				return ctrl.Result{}, err
-			}
+		if !controllerutil.ContainsFinalizer(&policy, finalizerName) {
+			return ctrl.Result{}, nil
 		}
+
+		err = r.adminClient.SetPermissions(ctx,
+			policy.Status.AccessKeyID,
+			policy.Status.BucketID,
+			s3.Permissions{})
+		if err != nil && !errors.Is(err, s3.ErrResourceNotFound) {
+			return ctrl.Result{}, err
+		}
+
+		_ = controllerutil.RemoveFinalizer(&policy, finalizerName)
+		err = r.client.Update(ctx, &policy)
 		return ctrl.Result{}, err
+	}
+
+	if metaChanged {
+		err = r.client.Update(ctx, &policy)
+		if err != nil {
+			return ctrl.Result{}, fmt.Errorf("updating object meta: %w", err)
+		}
+		// let the next reconciliation loop handle this update:
+		return reconcile.Result{}, nil
 	}
 
 	logger.V(1).Info("Reconciling AccessPolicy", "name", req.NamespacedName)
