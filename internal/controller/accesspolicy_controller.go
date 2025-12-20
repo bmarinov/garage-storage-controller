@@ -31,6 +31,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+	"sigs.k8s.io/controller-runtime/pkg/handler"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
@@ -64,6 +65,9 @@ func NewAccessPolicyReconciler(c client.Client,
 // errDependencyNotReady should resolve itself given enough time and recon can be retried.
 var errDependencyNotReady = errors.New("resource dependency is not ready")
 
+// accesskeyLabel on the AccessPolicy resource.
+const accesskeyLabel = "garage.getclustered.net/accesskey-name"
+
 // +kubebuilder:rbac:groups=garage.getclustered.net,resources=accesspolicies,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=garage.getclustered.net,resources=accesspolicies/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=garage.getclustered.net,resources=accesspolicies/finalizers,verbs=update
@@ -80,39 +84,43 @@ func (r *AccessPolicyReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		return ctrl.Result{}, err
 	}
 
+	metaChanged := r.ensureLabels(&policy)
+
 	if policy.DeletionTimestamp.IsZero() {
 		if !controllerutil.ContainsFinalizer(&policy, finalizerName) {
-			_ = controllerutil.AddFinalizer(&policy, finalizerName)
-			err = r.client.Update(ctx, &policy)
-			if err != nil {
-				return ctrl.Result{}, err
+			modified := controllerutil.AddFinalizer(&policy, finalizerName)
+			if modified {
+				metaChanged = true
 			}
 		}
 	} else {
-		if controllerutil.ContainsFinalizer(&policy, finalizerName) {
-			err = r.adminClient.SetPermissions(ctx,
-				policy.Status.AccessKeyID,
-				policy.Status.BucketID,
-				s3.Permissions{})
-			if err != nil && !errors.Is(err, s3.ErrResourceNotFound) {
-				return ctrl.Result{}, err
-			}
-
-			_ = controllerutil.RemoveFinalizer(&policy, finalizerName)
-			err = r.client.Update(ctx, &policy)
-			if err != nil {
-				return ctrl.Result{}, err
-			}
+		if !controllerutil.ContainsFinalizer(&policy, finalizerName) {
+			return ctrl.Result{}, nil
 		}
+
+		err = r.adminClient.SetPermissions(ctx,
+			policy.Status.AccessKeyID,
+			policy.Status.BucketID,
+			s3.Permissions{})
+		if err != nil && !errors.Is(err, s3.ErrResourceNotFound) {
+			return ctrl.Result{}, err
+		}
+
+		_ = controllerutil.RemoveFinalizer(&policy, finalizerName)
+		err = r.client.Update(ctx, &policy)
 		return ctrl.Result{}, err
 	}
 
-	logger.V(1).Info("Reconciling AccessPolicy", "name", req.NamespacedName)
-
-	if policy.Status.ObservedGeneration == policy.Generation &&
-		meta.IsStatusConditionTrue(policy.Status.Conditions, Ready) {
+	if metaChanged {
+		err = r.client.Update(ctx, &policy)
+		if err != nil {
+			return ctrl.Result{}, fmt.Errorf("updating object meta: %w", err)
+		}
+		// let the next reconciliation loop handle this update:
 		return reconcile.Result{}, nil
 	}
+
+	logger.V(1).Info("Reconciling AccessPolicy", "name", req.NamespacedName)
 
 	oldStatus := policy.Status.DeepCopy()
 	initializePolicyConditions(&policy)
@@ -148,8 +156,45 @@ func (r *AccessPolicyReconciler) Reconcile(ctx context.Context, req ctrl.Request
 func (r *AccessPolicyReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&garagev1alpha1.AccessPolicy{}).
+		Watches(&garagev1alpha1.AccessKey{},
+			handler.EnqueueRequestsFromMapFunc(r.findPoliciesForAccessKey)).
 		Named("accesspolicy").
 		Complete(r)
+}
+
+func (r *AccessPolicyReconciler) findPoliciesForAccessKey(ctx context.Context, obj client.Object) []reconcile.Request {
+	accessKey := obj.(*garagev1alpha1.AccessKey)
+	var policies garagev1alpha1.AccessPolicyList
+	err := r.client.List(ctx, &policies,
+		client.InNamespace(accessKey.Namespace),
+		client.MatchingLabels{accesskeyLabel: accessKey.Name},
+	)
+	if err != nil {
+		return []reconcile.Request{}
+	}
+
+	requests := make([]reconcile.Request, len(policies.Items))
+	for i, policy := range policies.Items {
+		requests[i] = reconcile.Request{
+			NamespacedName: types.NamespacedName{
+				Name:      policy.Name,
+				Namespace: policy.Namespace,
+			},
+		}
+	}
+
+	return requests
+}
+
+func (r *AccessPolicyReconciler) ensureLabels(policy *garagev1alpha1.AccessPolicy) bool {
+	if policy.Labels == nil {
+		policy.Labels = make(map[string]string)
+	}
+	if policy.Labels[accesskeyLabel] != policy.Spec.AccessKey {
+		policy.Labels[accesskeyLabel] = policy.Spec.AccessKey
+		return true
+	}
+	return false
 }
 
 func (r *AccessPolicyReconciler) reconcilePolicy(ctx context.Context, policy *garagev1alpha1.AccessPolicy) error {

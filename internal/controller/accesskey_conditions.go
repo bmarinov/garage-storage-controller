@@ -49,7 +49,7 @@ func markAccessKeyNotReady(k *garagev1alpha1.AccessKey,
 		args...)
 }
 
-func (k *AccessKey) MarkNotReady(condType string,
+func (k *AccessKey) markNotReady(condType string,
 	reason,
 	message string,
 	args ...any) {
@@ -64,10 +64,6 @@ func (k *AccessKey) MarkNotReady(condType string,
 	meta.SetStatusCondition(&k.Object.Status.Conditions, cond)
 }
 
-func (k *AccessKey) MarkSecretReady() {
-	markSecretReady(k.Object)
-}
-
 func markSecretReady(k *garagev1alpha1.AccessKey) {
 	cond := metav1.Condition{
 		Type:               KeySecretReady,
@@ -79,9 +75,10 @@ func markSecretReady(k *garagev1alpha1.AccessKey) {
 	meta.SetStatusCondition(&k.Status.Conditions, cond)
 }
 
-func (k *AccessKey) AccessKeyCondition() metav1.Condition {
+// externalKeyReadyStat returns the status of the AccessKeyReady condition.
+func (k *AccessKey) externalKeyReadyStat() metav1.ConditionStatus {
 	cond := meta.FindStatusCondition(k.Object.Status.Conditions, AccessKeyReady)
-	return *cond
+	return cond.Status
 }
 
 func updateAccessKeyCondition(k *garagev1alpha1.AccessKey) {
