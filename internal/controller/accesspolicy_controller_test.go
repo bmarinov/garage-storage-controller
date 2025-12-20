@@ -408,6 +408,7 @@ var _ = Describe("AccessPolicy Controller", func() {
 			_ = k8sClient.Get(ctx, objID, &policy)
 			topReady := meta.FindStatusCondition(policy.Status.Conditions, Ready)
 			Expect(topReady.Status).To(Equal(metav1.ConditionFalse), "should detect AccessKey change")
+			Expect(topReady.Reason).To(Equal(ReasonAccessKeyMissing))
 
 			// todo: ensure access revocation on Garage?
 		})

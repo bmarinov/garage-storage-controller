@@ -122,11 +122,6 @@ func (r *AccessPolicyReconciler) Reconcile(ctx context.Context, req ctrl.Request
 
 	logger.V(1).Info("Reconciling AccessPolicy", "name", req.NamespacedName)
 
-	if policy.Status.ObservedGeneration == policy.Generation &&
-		meta.IsStatusConditionTrue(policy.Status.Conditions, Ready) {
-		return reconcile.Result{}, nil
-	}
-
 	oldStatus := policy.Status.DeepCopy()
 	initializePolicyConditions(&policy)
 	err = r.reconcilePolicy(ctx, &policy)
