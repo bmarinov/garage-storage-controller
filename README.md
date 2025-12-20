@@ -109,7 +109,7 @@ go get -tool github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@latest
 
 #### E2E
 
-Install Kind:
+Run suite with `make test-e2e`. Requires Kind to be installed and available.:
 
 - Download a specific release:
 ```sh
@@ -118,6 +118,31 @@ version="v0.30.0"
 chmod +x ./kind
 sudo mv ./kind /usr/local/bin/kind
 ```
-
 - Or latest from Homebrew: `brew install kind`
 
+
+
+### Debugging
+
+#### E2E Tests
+
+Setup environment with `make setup-test-e2e` and launch tests in e2e packge.
+
+VS Code launch profile:
+```json
+{
+  "configurations": [
+    {
+        "name": "Debug E2E Tests",
+        "type": "go",
+        "request": "launch",
+        "mode": "test",
+        "program": "${workspaceFolder}/test/e2e",
+        "env": {
+            "KIND_CLUSTER": "garage-storage-controller-test-e2e",
+            "RUN_E2E": "true"
+        }
+    }
+  ]
+}
+```

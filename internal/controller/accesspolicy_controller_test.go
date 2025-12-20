@@ -261,6 +261,9 @@ var _ = Describe("AccessPolicy Controller", func() {
 			By("storing external resource IDs in status")
 			Expect(reconciled.Status.BucketID).ToNot(BeEmpty())
 			Expect(reconciled.Status.AccessKeyID).ToNot(BeEmpty())
+
+			By("storing name of accesskey resource in policy label")
+			Expect(reconciled.Labels[accessKeyName]).To(Equal(reconciled.Spec.AccessKey))
 		})
 
 		It("should remove key access on deletion", func() {

@@ -65,6 +65,9 @@ func NewAccessPolicyReconciler(c client.Client,
 // errDependencyNotReady should resolve itself given enough time and recon can be retried.
 var errDependencyNotReady = errors.New("resource dependency is not ready")
 
+// accesskeyLabel on the AccessPolicy resource.
+const accesskeyLabel = "garage.getclustered.net/accesskey-name"
+
 // +kubebuilder:rbac:groups=garage.getclustered.net,resources=accesspolicies,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=garage.getclustered.net,resources=accesspolicies/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=garage.getclustered.net,resources=accesspolicies/finalizers,verbs=update
@@ -81,7 +84,7 @@ func (r *AccessPolicyReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		return ctrl.Result{}, err
 	}
 
-	metaChanged := r.ensureLabels(ctx, &policy)
+	metaChanged := r.ensureLabels(&policy)
 
 	if policy.DeletionTimestamp.IsZero() {
 		if !controllerutil.ContainsFinalizer(&policy, finalizerName) {
@@ -158,8 +161,45 @@ func (r *AccessPolicyReconciler) Reconcile(ctx context.Context, req ctrl.Request
 func (r *AccessPolicyReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&garagev1alpha1.AccessPolicy{}).
+		Watches(&garagev1alpha1.AccessKey{},
+			handler.EnqueueRequestsFromMapFunc(r.findPoliciesForAccessKey)).
 		Named("accesspolicy").
 		Complete(r)
+}
+
+func (r *AccessPolicyReconciler) findPoliciesForAccessKey(ctx context.Context, obj client.Object) []reconcile.Request {
+	accessKey := obj.(*garagev1alpha1.AccessKey)
+	var policies garagev1alpha1.AccessPolicyList
+	err := r.client.List(ctx, &policies,
+		client.InNamespace(accessKey.Namespace),
+		client.MatchingLabels{accesskeyLabel: accessKey.Name},
+	)
+	if err != nil {
+		return []reconcile.Request{}
+	}
+
+	requests := make([]reconcile.Request, len(policies.Items))
+	for i, policy := range policies.Items {
+		requests[i] = reconcile.Request{
+			NamespacedName: types.NamespacedName{
+				Name:      policy.Name,
+				Namespace: policy.Namespace,
+			},
+		}
+	}
+
+	return requests
+}
+
+func (r *AccessPolicyReconciler) ensureLabels(policy *garagev1alpha1.AccessPolicy) bool {
+	if policy.Labels == nil {
+		policy.Labels = make(map[string]string)
+	}
+	if policy.Labels[accesskeyLabel] != policy.Spec.AccessKey {
+		policy.Labels[accesskeyLabel] = policy.Spec.AccessKey
+		return true
+	}
+	return false
 }
 
 func (r *AccessPolicyReconciler) reconcilePolicy(ctx context.Context, policy *garagev1alpha1.AccessPolicy) error {
