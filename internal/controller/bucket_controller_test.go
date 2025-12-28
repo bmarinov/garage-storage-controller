@@ -35,6 +35,7 @@ import (
 
 	garagev1alpha1 "github.com/bmarinov/garage-storage-controller/api/v1alpha1"
 	"github.com/bmarinov/garage-storage-controller/internal/s3"
+	"github.com/bmarinov/garage-storage-controller/internal/tests/fixture"
 )
 
 var _ = Describe("Bucket Controller", func() {
@@ -137,38 +138,45 @@ var _ = Describe("Bucket Controller", func() {
 			}).Should(Succeed())
 		})
 		It("should apply modifications to existing bucket", func() {
-			By("updating bucket quota")
 
+			newBucket := &garagev1alpha1.Bucket{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      fixture.RandAlpha(12),
+					Namespace: "default",
+				},
+				Spec: garagev1alpha1.BucketSpec{
+					Name: bucketName,
+				},
+			}
+			objID := types.NamespacedName{Namespace: "default", Name: newBucket.Name}
+
+			Expect(k8sClient.Create(ctx, newBucket)).To(Succeed())
+
+			s3API := newS3APIFake()
+			controllerReconciler := NewBucketReconciler(k8sClient, k8sClient.Scheme(), s3API)
+			_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{NamespacedName: objID})
+
+			By("setting bucket quota")
 			var bucket garagev1alpha1.Bucket
 
-			Expect(k8sClient.Get(ctx, typeNamespacedName, &bucket)).To(Succeed())
+			Expect(k8sClient.Get(ctx, objID, &bucket)).To(Succeed())
 			bucket.Spec.MaxSize = resource.MustParse("9500k")
 			bucket.Spec.MaxObjects = 900
 			Expect(k8sClient.Update(ctx, &bucket)).To(Succeed())
 
-			const bucketID = "abc333"
-
-			s3API := newS3APIFake()
-			s3API.buckets[bucketID] = s3.Bucket{
-				ID:            bucketID,
-				GlobalAliases: []string{bucket.Spec.Name},
-				Quotas:        s3.Quotas{},
-			}
-			controllerReconciler := NewBucketReconciler(k8sClient, k8sClient.Scheme(), s3API)
-
 			// act
-			_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{NamespacedName: typeNamespacedName})
+			_, err = controllerReconciler.Reconcile(ctx, reconcile.Request{NamespacedName: objID})
 			Expect(err).ShouldNot(HaveOccurred())
 
 			// assert
-			quota := s3API.buckets[bucketID].Quotas
+			quota := s3API.buckets[bucket.Status.BucketID].Quotas
 			Expect(quota.MaxSize).To(Equal(bucket.Spec.MaxSize.Value()))
 			Expect(quota.MaxObjects).To(Equal(bucket.Spec.MaxObjects))
 		})
 		It("should create external S3 bucket matching spec", func() {
 			By("creating a Bucket custom resource")
-			key := types.NamespacedName{Namespace: "default", Name: "bar-bucket"}
 			bucketName := "foo-storage"
+			key := types.NamespacedName{Namespace: "default", Name: bucketName}
 
 			resource := garagev1alpha1.Bucket{
 				ObjectMeta: metav1.ObjectMeta{
