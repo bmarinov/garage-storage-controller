@@ -18,7 +18,9 @@ package controller
 
 import (
 	"context"
+	"crypto/sha256"
 	"errors"
+	"fmt"
 	"slices"
 
 	"github.com/google/uuid"
@@ -190,8 +192,8 @@ var _ = Describe("Bucket Controller", func() {
 			Expect(err).ShouldNot(HaveOccurred())
 
 			By("waiting for external bucket to be provisioned")
+			var bucket garagev1alpha1.Bucket
 			Eventually(func(g Gomega) {
-				var bucket garagev1alpha1.Bucket
 				g.Expect(k8sClient.Get(ctx, key, &bucket)).To(Succeed())
 
 				g.Expect(bucket.Status.Conditions).To(ContainElement(
@@ -211,12 +213,49 @@ var _ = Describe("Bucket Controller", func() {
 				))
 			}).Should(Succeed())
 
+			By("retrieving bucket with suffixed name")
+			hash := sha256.Sum256([]byte(bucket.UID))
+			expectedName := fmt.Sprintf("%s-%x", bucketName, hash[:8])
+			created, err := s3Fake.Get(ctx, expectedName)
+			Expect(err).To(BeNil(), "bucket should exist: %s", expectedName)
+
 			By("comparing the bucket config with spec")
-			created, _ := s3Fake.Get(ctx, bucketName)
 			Expect(created.Quotas.MaxObjects).To(Equal(resource.Spec.MaxObjects))
 			Expect(created.Quotas.MaxSize).To(Equal(resource.Spec.MaxSize.Value()))
 			Expect(created.Quotas.MaxSize).To(Equal(expectedSizeBytes))
 		})
+
+		DescribeTable("validates bucket names",
+			func(bucketName string, isValid bool) {
+				resource := garagev1alpha1.Bucket{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      bucketName,
+						Namespace: "default",
+					},
+					Spec: garagev1alpha1.BucketSpec{
+						Name: bucketName,
+					},
+				}
+
+				err := k8sClient.Create(ctx, &resource)
+
+				DeferCleanup(func() {
+					_ = k8sClient.Delete(ctx, &resource)
+				})
+
+				if isValid {
+					Expect(err).To(Succeed())
+				} else {
+					Expect(err).To(HaveOccurred())
+				}
+			},
+			Entry("short name", "foo", true),
+			Entry("valid max length", "pqcvgdh4wtcqnryt5bsvguakutbdhjzb01234567890xyz", true),
+			Entry("too long", "pqcvgdh4wtcqnryt5bsvguakutbdhjzb01234567890xyz1", false),
+			Entry("upper case name", "FooBar", false),
+			Entry("too short", "ab", false),
+			Entry("starts with hyphen", "-invalid", false),
+		)
 	})
 })
 

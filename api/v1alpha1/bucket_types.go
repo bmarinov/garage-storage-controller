@@ -29,6 +29,8 @@ type BucketSpec struct {
 	// The actual name will be suffixed with a hash derived from the Bucket resource UID.
 	//
 	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinLength=3
+	// +kubebuilder:validation:MaxLength=46
 	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="Value is immutable"
 	Name string `json:"name"`
 
