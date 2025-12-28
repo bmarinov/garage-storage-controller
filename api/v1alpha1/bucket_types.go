@@ -18,6 +18,7 @@ limitations under the License.
 package v1alpha1
 
 import (
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -28,10 +29,15 @@ type BucketSpec struct {
 	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="Value is immutable"
 	Name string `json:"name"`
 
-	// MaxSize in bytes.
+	// MaxSize is the maximum bucket size in bytes.
+	// Supports standard quantity suffixes.
+	//
+	// Examples: "30Gi" (binary), "250M" (decimal), "8000" (bytes)
+	//
 	// +optional
-	MaxSize int64 `json:"maxSize,omitempty"`
+	MaxSize resource.Quantity `json:"maxSize"`
 
+	// MaxObjects is the number of objects the bucket can store.
 	// +optional
 	MaxObjects int64 `json:"maxObjects,omitempty"`
 }

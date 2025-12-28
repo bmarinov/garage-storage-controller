@@ -25,6 +25,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
@@ -139,7 +140,7 @@ var _ = Describe("Bucket Controller", func() {
 			var bucket garagev1alpha1.Bucket
 
 			Expect(k8sClient.Get(ctx, typeNamespacedName, &bucket)).To(Succeed())
-			bucket.Spec.MaxSize = 9500
+			bucket.Spec.MaxSize = resource.MustParse("9500")
 			bucket.Spec.MaxObjects = 900
 			Expect(k8sClient.Update(ctx, &bucket)).To(Succeed())
 
@@ -159,7 +160,7 @@ var _ = Describe("Bucket Controller", func() {
 
 			// assert
 			quota := s3API.buckets[bucketID].Quotas
-			Expect(quota.MaxSize).To(Equal(bucket.Spec.MaxSize))
+			Expect(quota.MaxSize).To(Equal(bucket.Spec.MaxSize.Value()))
 			Expect(quota.MaxObjects).To(Equal(bucket.Spec.MaxObjects))
 		})
 		It("should create external S3 bucket matching spec", func() {
@@ -174,7 +175,7 @@ var _ = Describe("Bucket Controller", func() {
 				},
 				Spec: garagev1alpha1.BucketSpec{
 					Name:       bucketName,
-					MaxSize:    365,
+					MaxSize:    resource.MustParse("365"),
 					MaxObjects: 9005,
 				},
 			}
@@ -212,7 +213,7 @@ var _ = Describe("Bucket Controller", func() {
 			By("comparing the bucket config with spec")
 			created, _ := s3Fake.Get(ctx, bucketName)
 			Expect(created.Quotas.MaxObjects).To(Equal(resource.Spec.MaxObjects))
-			Expect(created.Quotas.MaxSize).To(Equal(resource.Spec.MaxSize))
+			Expect(created.Quotas.MaxSize).To(Equal(resource.Spec.MaxSize.Value()))
 		})
 	})
 })
