@@ -59,7 +59,12 @@ spec:
                 pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
                 x-kubernetes-int-or-string: true
               name:
-                description: Name is the global alias of a Bucket.
+                description: |-
+                  Name is the desired bucket name.
+
+                  The actual name will be suffixed with a hash derived from the Bucket resource UID.
+                maxLength: 46
+                minLength: 3
                 type: string
                 x-kubernetes-validations:
                 - message: Value is immutable
@@ -72,6 +77,12 @@ spec:
             properties:
               bucketId:
                 description: The external Bucket identifier.
+                type: string
+              bucketName:
+                description: |-
+                  BucketName is the actual bucket name in Garage.
+
+                  Format: "<name>-<hash>"
                 type: string
               conditions:
                 items:
