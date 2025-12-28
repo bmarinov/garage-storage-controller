@@ -26,7 +26,6 @@ import (
 	"github.com/google/uuid"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
@@ -41,65 +40,49 @@ import (
 var _ = Describe("Bucket Controller", func() {
 	Context("When reconciling a resource", func() {
 		const resourceName = "test-bucket"
-
 		ctx := context.Background()
 
-		typeNamespacedName := types.NamespacedName{
-			Name:      resourceName,
-			Namespace: "default",
-		}
-		bucketName := "foo-bucket-alias"
-
-		BeforeEach(func() {
-			By("creating the custom resource for the Kind Bucket")
-			bucket := &garagev1alpha1.Bucket{}
-			err := k8sClient.Get(ctx, typeNamespacedName, bucket)
-			if err != nil && apierrors.IsNotFound(err) {
-				resource := &garagev1alpha1.Bucket{
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      resourceName,
-						Namespace: "default",
-					},
-					Spec: garagev1alpha1.BucketSpec{
-						Name: bucketName,
-					},
-				}
-				Expect(k8sClient.Create(ctx, resource)).To(Succeed())
-			}
-		})
-
-		AfterEach(func() {
-			resource := &garagev1alpha1.Bucket{}
-			err := k8sClient.Get(ctx, typeNamespacedName, resource)
-			Expect(err).NotTo(HaveOccurred())
-
-			By("Cleanup the specific resource instance Bucket")
-			Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
-		})
 		It("should successfully reconcile for existing external resource", func() {
-			By("Reconciling the created resource")
+			bucketName := fixture.RandAlpha(12)
+			bucket := &garagev1alpha1.Bucket{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      fixture.RandAlpha(8),
+					Namespace: "default",
+				},
+				Spec: garagev1alpha1.BucketSpec{
+					Name: bucketName,
+				},
+			}
+			Expect(k8sClient.Create(ctx, bucket)).To(Succeed())
+			DeferCleanup(func() {
+				_ = k8sClient.Delete(ctx, bucket)
+			})
+
+			By("simulating reconcile error after external bucket creation")
 			s3API := newS3APIFake()
+			existing := s3.Bucket{
+				ID:            "3f5z",
+				GlobalAliases: []string{suffixedResourceName(bucket.ObjectMeta)},
+			}
+			s3API.buckets[existing.ID] = existing
+
+			By("reconciling the created resource")
 			controllerReconciler := &BucketReconciler{
 				Client: k8sClient,
 				Scheme: k8sClient.Scheme(),
 				bucket: s3API,
 			}
 
-			existing := s3.Bucket{
-				ID:            "3f5z",
-				GlobalAliases: []string{bucketName},
-			}
-			s3API.buckets[existing.ID] = existing
-
+			bucketObjID := namespacedName(bucket.ObjectMeta)
 			_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
-				NamespacedName: typeNamespacedName,
+				NamespacedName: bucketObjID,
 			})
 			Expect(err).NotTo(HaveOccurred())
 
-			By("updating resource condition and generation")
+			By("storing resource condition and generation in status")
 			Eventually(func(g Gomega) {
 				var bucket garagev1alpha1.Bucket
-				g.Expect(k8sClient.Get(ctx, typeNamespacedName, &bucket)).To(Succeed())
+				g.Expect(k8sClient.Get(ctx, bucketObjID, &bucket)).To(Succeed())
 
 				var bucketCond metav1.Condition
 				_ = g.Expect((bucket.Status.Conditions)).To(ContainElement(SatisfyAll(
@@ -132,34 +115,38 @@ var _ = Describe("Bucket Controller", func() {
 			By("setting bucket ID")
 			Eventually(func(g Gomega) {
 				var bucket garagev1alpha1.Bucket
-				g.Expect(k8sClient.Get(ctx, typeNamespacedName, &bucket)).To(Succeed())
+				g.Expect(k8sClient.Get(ctx, bucketObjID, &bucket)).To(Succeed())
 
 				g.Expect(bucket.Status.BucketID).To(Equal(existing.ID))
 			}).Should(Succeed())
 		})
 		It("should apply modifications to existing bucket", func() {
-
 			newBucket := &garagev1alpha1.Bucket{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      fixture.RandAlpha(12),
 					Namespace: "default",
 				},
 				Spec: garagev1alpha1.BucketSpec{
-					Name: bucketName,
+					Name: fixture.RandAlpha(12),
 				},
 			}
-			objID := types.NamespacedName{Namespace: "default", Name: newBucket.Name}
 
 			Expect(k8sClient.Create(ctx, newBucket)).To(Succeed())
+			DeferCleanup(func() {
+				_ = k8sClient.Delete(ctx, newBucket)
+			})
 
 			s3API := newS3APIFake()
 			controllerReconciler := NewBucketReconciler(k8sClient, k8sClient.Scheme(), s3API)
+
+			By("reconciling")
+			objID := namespacedName(newBucket.ObjectMeta)
 			_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{NamespacedName: objID})
 
 			By("setting bucket quota")
 			var bucket garagev1alpha1.Bucket
-
 			Expect(k8sClient.Get(ctx, objID, &bucket)).To(Succeed())
+
 			bucket.Spec.MaxSize = resource.MustParse("9500k")
 			bucket.Spec.MaxObjects = 900
 			Expect(k8sClient.Update(ctx, &bucket)).To(Succeed())
@@ -176,12 +163,12 @@ var _ = Describe("Bucket Controller", func() {
 		It("should create external S3 bucket matching spec", func() {
 			By("creating a Bucket custom resource")
 			bucketName := "foo-storage"
-			key := types.NamespacedName{Namespace: "default", Name: bucketName}
+			objID := types.NamespacedName{Namespace: "default", Name: bucketName}
 
 			resource := garagev1alpha1.Bucket{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:      key.Name,
-					Namespace: key.Namespace,
+					Name:      objID.Name,
+					Namespace: objID.Namespace,
 				},
 				Spec: garagev1alpha1.BucketSpec{
 					Name:       bucketName,
@@ -196,13 +183,13 @@ var _ = Describe("Bucket Controller", func() {
 			var s3Fake = newS3APIFake()
 			controllerReconciler := NewBucketReconciler(k8sClient, k8sClient.Scheme(), s3Fake)
 
-			_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{NamespacedName: key})
+			_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{NamespacedName: objID})
 			Expect(err).ShouldNot(HaveOccurred())
 
 			By("waiting for external bucket to be provisioned")
 			var bucket garagev1alpha1.Bucket
 			Eventually(func(g Gomega) {
-				g.Expect(k8sClient.Get(ctx, key, &bucket)).To(Succeed())
+				g.Expect(k8sClient.Get(ctx, objID, &bucket)).To(Succeed())
 
 				g.Expect(bucket.Status.Conditions).To(ContainElement(
 					SatisfyAll(
