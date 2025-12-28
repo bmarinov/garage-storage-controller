@@ -97,13 +97,6 @@ TBD
 
 Scaffolding done with kubebuilder. See [docs](https://book.kubebuilder.io/reference/reference) for more info.
 
-Admin API client generated with the OpenAPI spec and oapi-codegen:
-
-```sh
-go get -tool github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@latest
-
-//go:generate go tool oapi-codegen -config cfg.yaml ../../api.yaml
-```
 
 ### Running tests
 
