@@ -7,3 +7,4 @@ metadata:
   name: bucket-sample
 spec:
   name: bucket-global-name
+  maxSize: 2.5Gi

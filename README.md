@@ -10,8 +10,9 @@ __garage-storage-controller__ handles bucket and access key management for [Gara
 This project is in alpha and should be considered a technical preview. Core functionality is present, but some edge cases and common errors are not yet handled.
 
 CRDs are still alpha, following is subject to change:
-- Use units for `maxSize` (e.g. "10Gi").
-- Differentiate between exact and derived resource names.
+- Naming conventions for created (owned) resources.
+- Importing existing resources (e.g. buckets).
+- Differentiate between exact and derived (pre-/suffixed) resource names.
 
 API will stabilize as soon as the project hits beta state.
 
@@ -24,7 +25,7 @@ metadata:
   name: bucket-sample
 spec:
   name: foo-global-name
-  maxSize: 9001000
+  maxSize: 10Gi
 
 ---
 apiVersion: garage.getclustered.net/v1alpha1
