@@ -44,12 +44,20 @@ spec:
             description: spec defines the desired state of Bucket
             properties:
               maxObjects:
+                description: MaxObjects is the number of objects the bucket can store.
                 format: int64
                 type: integer
               maxSize:
-                description: MaxSize in bytes.
-                format: int64
-                type: integer
+                anyOf:
+                - type: integer
+                - type: string
+                description: |-
+                  MaxSize is the maximum bucket size in bytes.
+                  Supports standard quantity suffixes.
+
+                  Examples: "30Gi" (binary), "250M" (decimal), "8000" (bytes)
+                pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                x-kubernetes-int-or-string: true
               name:
                 description: Name is the global alias of a Bucket.
                 type: string

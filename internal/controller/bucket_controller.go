@@ -129,7 +129,7 @@ func (r *BucketReconciler) reconcileBucket(ctx context.Context, bucket *garagev1
 	if diff {
 		err := r.bucket.Update(ctx, s3Bucket.ID, s3.Quotas{
 			MaxObjects: bucket.Spec.MaxObjects,
-			MaxSize:    bucket.Spec.MaxSize,
+			MaxSize:    bucket.Spec.MaxSize.Value(),
 		})
 
 		if err != nil {
@@ -145,7 +145,7 @@ func (r *BucketReconciler) reconcileBucket(ctx context.Context, bucket *garagev1
 
 func compareSpec(bucket s3.Bucket, spec garagev1alpha1.BucketSpec) bool {
 	if bucket.Quotas.MaxObjects != spec.MaxObjects ||
-		bucket.Quotas.MaxSize != spec.MaxSize {
+		bucket.Quotas.MaxSize != spec.MaxSize.Value() {
 		return true
 	}
 
