@@ -140,7 +140,7 @@ var _ = Describe("Bucket Controller", func() {
 			var bucket garagev1alpha1.Bucket
 
 			Expect(k8sClient.Get(ctx, typeNamespacedName, &bucket)).To(Succeed())
-			bucket.Spec.MaxSize = resource.MustParse("9500")
+			bucket.Spec.MaxSize = resource.MustParse("9500k")
 			bucket.Spec.MaxObjects = 900
 			Expect(k8sClient.Update(ctx, &bucket)).To(Succeed())
 
@@ -175,10 +175,11 @@ var _ = Describe("Bucket Controller", func() {
 				},
 				Spec: garagev1alpha1.BucketSpec{
 					Name:       bucketName,
-					MaxSize:    resource.MustParse("365"),
+					MaxSize:    resource.MustParse("365Mi"),
 					MaxObjects: 9005,
 				},
 			}
+			expectedSizeBytes := int64(365 * 1024 * 1024)
 			Expect(k8sClient.Create(ctx, &resource)).To(Succeed())
 
 			By("reconciling")
@@ -214,6 +215,7 @@ var _ = Describe("Bucket Controller", func() {
 			created, _ := s3Fake.Get(ctx, bucketName)
 			Expect(created.Quotas.MaxObjects).To(Equal(resource.Spec.MaxObjects))
 			Expect(created.Quotas.MaxSize).To(Equal(resource.Spec.MaxSize.Value()))
+			Expect(created.Quotas.MaxSize).To(Equal(expectedSizeBytes))
 		})
 	})
 })
