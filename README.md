@@ -34,7 +34,6 @@ metadata:
   name: accesskey-sample
 spec:
   secretName: foo-bucket-access-rw
-  neverExpires: true
 
 ---
 apiVersion: garage.getclustered.net/v1alpha1

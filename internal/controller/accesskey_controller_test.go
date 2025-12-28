@@ -484,11 +484,11 @@ var _ = Describe("AccessKey Controller", func() {
 			Expect(k8sClient.Create(ctx, &accessKey)).Should(Succeed())
 
 			By("reconciling without error")
-			_, err := sut.Reconcile(ctx, reconcile.Request{NamespacedName: objID(accessKey.ObjectMeta)})
+			_, err := sut.Reconcile(ctx, reconcile.Request{NamespacedName: namespacedName(accessKey.ObjectMeta)})
 			Expect(err).ToNot(HaveOccurred())
 
 			By("Failed status set")
-			_ = k8sClient.Get(ctx, objID(accessKey.ObjectMeta), &accessKey)
+			_ = k8sClient.Get(ctx, namespacedName(accessKey.ObjectMeta), &accessKey)
 			topReady := meta.FindStatusCondition(accessKey.Status.Conditions, Ready)
 			Expect(topReady).ToNot(BeNil())
 			Expect(topReady.Reason).To(Equal(ReasonSecretNameConflict), "should surface specific reason")
@@ -496,8 +496,8 @@ var _ = Describe("AccessKey Controller", func() {
 	})
 })
 
-// objID creates a namespaced name from object meta.
-func objID(m metav1.ObjectMeta) types.NamespacedName {
+// namespacedName creates a namespaced name from object meta.
+func namespacedName(m metav1.ObjectMeta) types.NamespacedName {
 	return types.NamespacedName{Namespace: m.Namespace, Name: m.Name}
 }
 

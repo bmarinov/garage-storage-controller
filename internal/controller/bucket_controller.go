@@ -18,11 +18,13 @@ package controller
 
 import (
 	"context"
+	"crypto/sha256"
 	"errors"
 	"fmt"
 
 	"k8s.io/apimachinery/pkg/api/equality"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -99,7 +101,7 @@ func (r *BucketReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 }
 
 func (r *BucketReconciler) reconcileBucket(ctx context.Context, bucket *garagev1alpha1.Bucket) error {
-	alias := bucket.Spec.Name
+	alias := suffixedResourceName(bucket.ObjectMeta)
 	s3Bucket, err := r.bucket.Get(ctx, alias)
 	if err != nil {
 		if errors.Is(err, s3.ErrResourceNotFound) {
@@ -150,4 +152,10 @@ func compareSpec(bucket s3.Bucket, spec garagev1alpha1.BucketSpec) bool {
 	}
 
 	return false
+}
+
+// suffixedResourceName adds a suffix based on the resource UID.
+func suffixedResourceName(meta metav1.ObjectMeta) string {
+	hash := sha256.Sum256([]byte(meta.UID))
+	return fmt.Sprintf("%s-%x", meta.Name, hash[:8])
 }

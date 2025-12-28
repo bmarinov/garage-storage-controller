@@ -24,8 +24,13 @@ import (
 
 // BucketSpec defines the desired state of Bucket
 type BucketSpec struct {
-	// Name is the global alias of a Bucket.
+	// Name is the desired bucket name.
+	//
+	// The actual name will be suffixed with a hash derived from the Bucket resource UID.
+	//
 	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinLength=3
+	// +kubebuilder:validation:MaxLength=46
 	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="Value is immutable"
 	Name string `json:"name"`
 
@@ -55,6 +60,12 @@ type BucketStatus struct {
 	// The external Bucket identifier.
 	// +optional
 	BucketID string `json:"bucketId,omitempty"`
+
+	// BucketName is the actual bucket name in Garage.
+	//
+	// Format: "<name>-<hash>"
+	// +optional
+	BucketName string `json:"bucketName,omitempty"`
 
 	// +optional
 	LastSync *metav1.Time `json:"lastSync,omitempty"`
