@@ -38,6 +38,12 @@ import (
 	"github.com/bmarinov/garage-storage-controller/internal/s3"
 )
 
+// Keys in the secret holding the access key information.
+const (
+	SecretKeyAccessKeyID     = "access-key-id"
+	SecretKeySecretAccessKey = "secret-access-key"
+)
+
 // AccessKeyReconciler reconciles an AccessKey object
 type AccessKeyReconciler struct {
 	client    client.Client
@@ -263,8 +269,8 @@ func (r *AccessKeyReconciler) ensureSecret(ctx context.Context,
 
 	_, err = controllerutil.CreateOrUpdate(ctx, r.client, &secretRes, func() error {
 		secretRes.Data = map[string][]byte{
-			"accessKeyId":     []byte(parent.Status.AccessKeyID),
-			"secretAccessKey": []byte(secret),
+			SecretKeyAccessKeyID:     []byte(parent.Status.AccessKeyID),
+			SecretKeySecretAccessKey: []byte(secret),
 		}
 		return nil
 	})

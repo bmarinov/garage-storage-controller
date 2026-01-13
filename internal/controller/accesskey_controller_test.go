@@ -186,8 +186,8 @@ var _ = Describe("AccessKey Controller", func() {
 				var secretRes corev1.Secret
 				_ = k8sClient.Get(ctx, types.NamespacedName{Namespace: accessKey.Namespace, Name: accessKey.Spec.SecretName}, &secretRes)
 
-				g.Expect(string(secretRes.Data["accessKeyId"])).To(Equal(accessKey.Status.AccessKeyID))
-				g.Expect(string(secretRes.Data["secretAccessKey"])).To(Equal(extAPI.keys[0].Secret))
+				g.Expect(string(secretRes.Data[SecretKeyAccessKeyID])).To(Equal(accessKey.Status.AccessKeyID))
+				g.Expect(string(secretRes.Data[SecretKeySecretAccessKey])).To(Equal(extAPI.keys[0].Secret))
 			}).Should(Succeed())
 			By("setting top-level Ready when access key and secret are ready")
 			var accessKey garagev1alpha1.AccessKey
@@ -354,8 +354,8 @@ var _ = Describe("AccessKey Controller", func() {
 			_ = k8sClient.Get(ctx, typeNamespacedName, &accessKey)
 			Expect(accessKey.Status.AccessKeyID).To(Equal(existingExtKey.ID), "key ID should not change")
 
-			Expect(newSecret.Data["accessKeyId"]).To(Equal(oldSecret.Data["accessKeyId"]))
-			Expect(newSecret.Data["secretAccessKey"]).To(Equal(oldSecret.Data["secretAccessKey"]))
+			Expect(newSecret.Data[SecretKeyAccessKeyID]).To(Equal(oldSecret.Data[SecretKeyAccessKeyID]))
+			Expect(newSecret.Data[SecretKeySecretAccessKey]).To(Equal(oldSecret.Data[SecretKeySecretAccessKey]))
 
 			By("old secret deleted")
 			Expect(k8sClient.Get(ctx, oldSecretID, &oldSecret)).To(Not(Succeed()), "old secret should no longer exist")
@@ -410,8 +410,8 @@ var _ = Describe("AccessKey Controller", func() {
 				&newSecret)).
 				To(Succeed())
 
-			Expect(string(newSecret.Data["accessKeyId"])).To(Equal(newKey.ID))
-			Expect(string(newSecret.Data["secretAccessKey"])).To(Equal(newKey.Secret))
+			Expect(string(newSecret.Data[SecretKeyAccessKeyID])).To(Equal(newKey.ID))
+			Expect(string(newSecret.Data[SecretKeySecretAccessKey])).To(Equal(newKey.Secret))
 		})
 		It("removes external key when resource is deleted", func() {
 			sut, externalAPI := setup()
