@@ -222,11 +222,11 @@ var _ = Describe("Bucket Controller", func() {
 			Expect(created.Quotas.MaxSize).To(Equal(expectedSizeBytes))
 
 			By("creating a ConfigMap with bucket details")
+			expectedCMName := bucket.Name
 			Eventually(func(g Gomega) {
 				var configmap corev1.ConfigMap
-				configMapName := bucket.Name
 				g.Expect(k8sClient.Get(ctx,
-					types.NamespacedName{Namespace: "default", Name: configMapName},
+					types.NamespacedName{Namespace: "default", Name: expectedCMName},
 					&configmap)).To(Succeed())
 
 				g.Expect(configmap.Data[ConfigMapKeyBucketName]).To(Equal(bucket.Status.BucketName))

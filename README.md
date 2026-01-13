@@ -53,13 +53,12 @@ spec:
 This will create a bucket and an access key on Garage. Permissions will be set via the admin API.
 
 Bucket configuration and access key will be stored in Kubernetes objects:
-
 ```yaml
 ---
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: bucket-sample-config
+  name: bucket-sample
 data:
   bucket-name: "foo-global-name-abcd1234"
   s3-endpoint: "https://s3.garage.foo.net"

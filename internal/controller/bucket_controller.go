@@ -29,6 +29,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
 	garagev1alpha1 "github.com/bmarinov/garage-storage-controller/api/v1alpha1"
 	"github.com/bmarinov/garage-storage-controller/internal/s3"
@@ -138,6 +139,9 @@ func (r *BucketReconciler) reconcileBucket(ctx context.Context, bucket *garagev1
 	if bucket.Status.BucketID == "" {
 		bucket.Status.BucketID = s3Bucket.ID
 	}
+	if bucket.Status.BucketName == "" {
+		bucket.Status.BucketName = alias
+	}
 
 	diff := compareSpec(s3Bucket, bucket.Spec)
 
@@ -155,7 +159,7 @@ func (r *BucketReconciler) reconcileBucket(ctx context.Context, bucket *garagev1
 		}
 	}
 
-	err = r.createConfigMap(ctx, alias, r.s3APIEndpoint)
+	err = r.createBucketCM(ctx, bucket, r.s3APIEndpoint)
 	if err != nil {
 		return fmt.Errorf("create configmap for bucket '%s': %w", alias, err)
 	}
@@ -163,19 +167,26 @@ func (r *BucketReconciler) reconcileBucket(ctx context.Context, bucket *garagev1
 	return nil
 }
 
-func (r *BucketReconciler) createConfigMap(ctx context.Context, bucketName string, endpoint string) error {
+// createBucketCM creates a new configmap or updates the values in an existing one.
+func (r *BucketReconciler) createBucketCM(ctx context.Context, bucket *garagev1alpha1.Bucket, endpoint string) error {
 	cm := corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: bucketName,
-			// Namespace: , // TODO
-		},
-		Data: map[string]string{
-			ConfigMapKeyBucketName: bucketName,
-			ConfigMapKeyEndpoint:   endpoint,
+			Name:      bucket.Name,
+			Namespace: bucket.Namespace,
 		},
 	}
 
-	err := r.Client.Create(ctx, &cm)
+	_, err := controllerutil.CreateOrUpdate(ctx, r.Client, &cm, func() error {
+		err := controllerutil.SetControllerReference(bucket, &cm, r.Scheme)
+		if err != nil {
+			return err
+		}
+		cm.Data = map[string]string{
+			ConfigMapKeyBucketName: bucket.Status.BucketName,
+			ConfigMapKeyEndpoint:   endpoint,
+		}
+		return nil
+	})
 
 	return err
 }
