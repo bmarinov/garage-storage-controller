@@ -22,6 +22,7 @@ import (
 	"errors"
 	"fmt"
 
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/equality"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -37,6 +38,11 @@ const (
 	bucketControllerName = "garage-storage-controller"
 )
 
+const (
+	ConfigMapKeyBucketName = "bucket-name"
+	ConfigMapKeyEndpoint   = "s3-endpoint"
+)
+
 type BucketClient interface {
 	Create(ctx context.Context, globalAlias string) (s3.Bucket, error)
 	Get(ctx context.Context, globalAlias string) (s3.Bucket, error)
@@ -46,15 +52,22 @@ type BucketClient interface {
 // BucketReconciler reconciles a Bucket object
 type BucketReconciler struct {
 	client.Client
-	Scheme *runtime.Scheme
-	bucket BucketClient
+	Scheme        *runtime.Scheme
+	bucket        BucketClient
+	s3APIEndpoint string
 }
 
-func NewBucketReconciler(apiClient client.Client, scheme *runtime.Scheme, s3Client BucketClient) *BucketReconciler {
+func NewBucketReconciler(
+	apiClient client.Client,
+	scheme *runtime.Scheme,
+	s3Client BucketClient,
+	s3APIEndpoint string,
+) *BucketReconciler {
 	return &BucketReconciler{
-		Client: apiClient,
-		Scheme: scheme,
-		bucket: s3Client,
+		Client:        apiClient,
+		Scheme:        scheme,
+		bucket:        s3Client,
+		s3APIEndpoint: s3APIEndpoint,
 	}
 }
 
@@ -141,8 +154,30 @@ func (r *BucketReconciler) reconcileBucket(ctx context.Context, bucket *garagev1
 			return fmt.Errorf("updating external bucket to spec: %w", err)
 		}
 	}
+
+	err = r.createConfigMap(ctx, alias, r.s3APIEndpoint)
+	if err != nil {
+		return fmt.Errorf("create configmap for bucket '%s': %w", alias, err)
+	}
 	markBucketReady(bucket)
 	return nil
+}
+
+func (r *BucketReconciler) createConfigMap(ctx context.Context, bucketName string, endpoint string) error {
+	cm := corev1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: bucketName,
+			// Namespace: , // TODO
+		},
+		Data: map[string]string{
+			ConfigMapKeyBucketName: bucketName,
+			ConfigMapKeyEndpoint:   endpoint,
+		},
+	}
+
+	err := r.Client.Create(ctx, &cm)
+
+	return err
 }
 
 func compareSpec(bucket s3.Bucket, spec garagev1alpha1.BucketSpec) bool {

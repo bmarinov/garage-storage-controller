@@ -87,6 +87,7 @@ func main() {
 
 	garageAPIToken := os.Getenv("GARAGE_API_TOKEN")
 	garageAPIEndpoint := os.Getenv("GARAGE_API_ENDPOINT")
+	garageS3Endpoint := os.Getenv("GARAGE_S3_API_ENDPOINT")
 
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
 
@@ -186,6 +187,7 @@ func main() {
 		mgr.GetClient(),
 		mgr.GetScheme(),
 		garageClient.BucketClient,
+		garageS3Endpoint,
 	).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "Bucket")
 		os.Exit(1)
