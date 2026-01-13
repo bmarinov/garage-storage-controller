@@ -85,9 +85,11 @@ func main() {
 	opts.BindFlags(flag.CommandLine)
 	flag.Parse()
 
-	garageAPIToken := os.Getenv("GARAGE_API_TOKEN")
-	garageAPIEndpoint := os.Getenv("GARAGE_API_ENDPOINT")
-	garageS3Endpoint := os.Getenv("GARAGE_S3_API_ENDPOINT")
+	cfg, err := loadConfig()
+	if err != nil {
+		setupLog.Error(err, "loading controller config")
+		os.Exit(1)
+	}
 
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
 
@@ -182,12 +184,12 @@ func main() {
 		os.Exit(1)
 	}
 
-	garageClient := garage.NewClient(garageAPIEndpoint, garageAPIToken)
+	garageClient := garage.NewClient(cfg.garageAPIEndpoint, cfg.garageAPIToken)
 	if err := controller.NewBucketReconciler(
 		mgr.GetClient(),
 		mgr.GetScheme(),
 		garageClient.BucketClient,
-		garageS3Endpoint,
+		cfg.garageS3Endpoint,
 	).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "Bucket")
 		os.Exit(1)
