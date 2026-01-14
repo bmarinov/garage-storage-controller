@@ -22,12 +22,14 @@ import (
 	"errors"
 	"fmt"
 
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/equality"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
 	garagev1alpha1 "github.com/bmarinov/garage-storage-controller/api/v1alpha1"
 	"github.com/bmarinov/garage-storage-controller/internal/s3"
@@ -35,6 +37,11 @@ import (
 
 const (
 	bucketControllerName = "garage-storage-controller"
+)
+
+const (
+	ConfigMapKeyBucketName = "bucket-name"
+	ConfigMapKeyEndpoint   = "s3-endpoint"
 )
 
 type BucketClient interface {
@@ -46,15 +53,22 @@ type BucketClient interface {
 // BucketReconciler reconciles a Bucket object
 type BucketReconciler struct {
 	client.Client
-	Scheme *runtime.Scheme
-	bucket BucketClient
+	Scheme        *runtime.Scheme
+	bucket        BucketClient
+	s3APIEndpoint string
 }
 
-func NewBucketReconciler(apiClient client.Client, scheme *runtime.Scheme, s3Client BucketClient) *BucketReconciler {
+func NewBucketReconciler(
+	apiClient client.Client,
+	scheme *runtime.Scheme,
+	s3Client BucketClient,
+	s3APIEndpoint string,
+) *BucketReconciler {
 	return &BucketReconciler{
-		Client: apiClient,
-		Scheme: scheme,
-		bucket: s3Client,
+		Client:        apiClient,
+		Scheme:        scheme,
+		bucket:        s3Client,
+		s3APIEndpoint: s3APIEndpoint,
 	}
 }
 
@@ -125,6 +139,9 @@ func (r *BucketReconciler) reconcileBucket(ctx context.Context, bucket *garagev1
 	if bucket.Status.BucketID == "" {
 		bucket.Status.BucketID = s3Bucket.ID
 	}
+	if bucket.Status.BucketName == "" {
+		bucket.Status.BucketName = alias
+	}
 
 	diff := compareSpec(s3Bucket, bucket.Spec)
 
@@ -141,8 +158,37 @@ func (r *BucketReconciler) reconcileBucket(ctx context.Context, bucket *garagev1
 			return fmt.Errorf("updating external bucket to spec: %w", err)
 		}
 	}
+
+	err = r.createBucketCM(ctx, bucket, r.s3APIEndpoint)
+	if err != nil {
+		return fmt.Errorf("create configmap for bucket '%s': %w", alias, err)
+	}
 	markBucketReady(bucket)
 	return nil
+}
+
+// createBucketCM creates a new configmap or updates the values in an existing one.
+func (r *BucketReconciler) createBucketCM(ctx context.Context, bucket *garagev1alpha1.Bucket, endpoint string) error {
+	cm := corev1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      bucket.Name,
+			Namespace: bucket.Namespace,
+		},
+	}
+
+	_, err := controllerutil.CreateOrUpdate(ctx, r.Client, &cm, func() error {
+		err := controllerutil.SetControllerReference(bucket, &cm, r.Scheme)
+		if err != nil {
+			return err
+		}
+		cm.Data = map[string]string{
+			ConfigMapKeyBucketName: bucket.Status.BucketName,
+			ConfigMapKeyEndpoint:   endpoint,
+		}
+		return nil
+	})
+
+	return err
 }
 
 func compareSpec(bucket s3.Bucket, spec garagev1alpha1.BucketSpec) bool {

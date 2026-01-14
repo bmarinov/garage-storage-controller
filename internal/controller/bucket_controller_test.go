@@ -30,6 +30,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	garagev1alpha1 "github.com/bmarinov/garage-storage-controller/api/v1alpha1"
@@ -137,7 +138,7 @@ var _ = Describe("Bucket Controller", func() {
 			})
 
 			s3API := newS3APIFake()
-			controllerReconciler := NewBucketReconciler(k8sClient, k8sClient.Scheme(), s3API)
+			controllerReconciler := NewBucketReconciler(k8sClient, k8sClient.Scheme(), s3API, "foo/bar")
 
 			By("reconciling")
 			objID := namespacedName(newBucket.ObjectMeta)
@@ -181,7 +182,8 @@ var _ = Describe("Bucket Controller", func() {
 
 			By("reconciling")
 			var s3Fake = newS3APIFake()
-			controllerReconciler := NewBucketReconciler(k8sClient, k8sClient.Scheme(), s3Fake)
+			s3Endpoint := "https://foo.bar/baz:3456"
+			controllerReconciler := NewBucketReconciler(k8sClient, k8sClient.Scheme(), s3Fake, s3Endpoint)
 
 			_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{NamespacedName: objID})
 			Expect(err).ShouldNot(HaveOccurred())
@@ -218,6 +220,18 @@ var _ = Describe("Bucket Controller", func() {
 			Expect(created.Quotas.MaxObjects).To(Equal(resource.Spec.MaxObjects))
 			Expect(created.Quotas.MaxSize).To(Equal(resource.Spec.MaxSize.Value()))
 			Expect(created.Quotas.MaxSize).To(Equal(expectedSizeBytes))
+
+			By("creating a ConfigMap with bucket details")
+			expectedCMName := bucket.Name
+			Eventually(func(g Gomega) {
+				var configmap corev1.ConfigMap
+				g.Expect(k8sClient.Get(ctx,
+					types.NamespacedName{Namespace: "default", Name: expectedCMName},
+					&configmap)).To(Succeed())
+
+				g.Expect(configmap.Data[ConfigMapKeyBucketName]).To(Equal(bucket.Status.BucketName))
+				g.Expect(configmap.Data[ConfigMapKeyEndpoint]).To(Equal(s3Endpoint))
+			}).Should(Succeed())
 		})
 
 		DescribeTable("validates bucket names",

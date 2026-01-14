@@ -52,8 +52,11 @@ type AccessKeyStatus struct {
 
 	// SecretName is the name of the secret created to store the access key.
 	// It holds the reference to the previously created secret on spec changes.
+	//
+	// Keys: access-key-id, secret-access-key
+	//
 	// +optional
-	SecretName string `json:"secretRef"`
+	SecretName string `json:"secretName,omitempty"`
 }
 
 // +kubebuilder:object:root=true

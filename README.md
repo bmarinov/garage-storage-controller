@@ -52,6 +52,27 @@ spec:
 
 This will create a bucket and an access key on Garage. Permissions will be set via the admin API.
 
+Bucket configuration and access key will be stored in Kubernetes objects:
+```yaml
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: bucket-sample
+data:
+  bucket-name: "foo-global-name-abcd1234"
+  s3-endpoint: "https://s3.garage.foo.net"
+
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: foo-bucket-access-rw
+data:
+  access-key-id: "ABC..."
+  secret-access-key: "..."
+```
+
 ### CRDs
 - `Bucket`: Creates S3 buckets on the Garage cluster
 - `AccessKey`: Generate credentials and store them as namespace secrets
@@ -71,10 +92,11 @@ Creating and managing storage buckets through Kubernetes API resources should be
 
 ### Configuration
 
-| Env variable        | Description                                                    |
-| ------------------- | -------------------------------------------------------------- |
-| GARAGE_API_ENDPOINT | Endpoint address of the Garage admin API.                      |
-| GARAGE_API_TOKEN    | API key used to authenticate requests to the Garage admin API. |
+| Env variable            | Description                                                    |
+| ------------------------| -------------------------------------------------------------- |
+| GARAGE_API_ENDPOINT     | Endpoint address of the Garage admin API.                      |
+| GARAGE_API_TOKEN        | API key used to authenticate requests to the Garage admin API. |
+| GARAGE_S3_API_ENDPOINT  | Endpoint address of the S3 client API provided to workloads.   |
 
 ### Manifests
 
@@ -89,7 +111,31 @@ kubectl apply foo/bar.yaml
 
 TBD
 
-### RBAC
+## Permissions model and security
+
+The controller needs cluster-level permissions for its CRDs. ConfigMap and Secret access can be restricted to specific namespaces.
+
+### CRDs
+
+The controller manages the following custom resources in the `garage.getclustered.net` group:
+- `accesskeys`
+- `accesspolicies`
+- `buckets`
+
+See [config/rbac/role.yaml](config/rbac/role.yaml) for the ClusterRole definition.
+
+### ConfigMaps and Secrets
+
+The controller stores bucket connection details in ConfigMaps and S3 credentials in Secrets. These resources are created in the same namespace as the Bucket and AccessKey resources.
+
+Grant access and enroll a namespace (example):
+```sh
+kubectl apply -k "config/rbac/namespaces/${namespace}"
+```
+
+See [config/rbac/base/role_namespace_access.yaml](config/rbac/base/role_namespace_access.yaml) for the Role definition.
+
+**Note**: The controller does not need cluster-wide access to ConfigMaps or Secrets. Use namespace roles.
 
 ## Development
 

@@ -25,10 +25,12 @@ import (
 	// to ensure that exec-entrypoint and run can make use of them.
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	"sigs.k8s.io/controller-runtime/pkg/metrics/filters"
@@ -85,8 +87,11 @@ func main() {
 	opts.BindFlags(flag.CommandLine)
 	flag.Parse()
 
-	garageAPIToken := os.Getenv("GARAGE_API_TOKEN")
-	garageAPIEndpoint := os.Getenv("GARAGE_API_ENDPOINT")
+	cfg, err := loadConfig()
+	if err != nil {
+		setupLog.Error(err, "loading controller config")
+		os.Exit(1)
+	}
 
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
 
@@ -122,7 +127,7 @@ func main() {
 
 	webhookServer := webhook.NewServer(webhookServerOptions)
 
-	// Metrics endpoint is enabled in 'config/default/kustomization.yaml'. The Metrics options configure the server.
+	// Metrics endpoint is enabled in 'config/e2e/kustomization.yaml'. The Metrics options configure the server.
 	// More info:
 	// - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.22.4/pkg/metrics/server
 	// - https://book.kubebuilder.io/reference/metrics.html
@@ -145,7 +150,7 @@ func main() {
 	// this setup is not recommended for production.
 	//
 	// TODO(user): If you enable certManager, uncomment the following lines:
-	// - [METRICS-WITH-CERTS] at config/default/kustomization.yaml to generate and use certificates
+	// - [METRICS-WITH-CERTS] at config/e2e/kustomization.yaml to generate and use certificates
 	// managed by cert-manager for the metrics server.
 	// - [PROMETHEUS-WITH-CERTS] at config/prometheus/kustomization.yaml for TLS certification.
 	if len(metricsCertPath) > 0 {
@@ -164,6 +169,14 @@ func main() {
 		HealthProbeBindAddress: probeAddr,
 		LeaderElection:         enableLeaderElection,
 		LeaderElectionID:       "754171dd.getclustered.net",
+		Client: client.Options{
+			Cache: &client.CacheOptions{
+				DisableFor: []client.Object{
+					&corev1.Secret{},
+					&corev1.ConfigMap{},
+				},
+			},
+		},
 		// LeaderElectionReleaseOnCancel defines if the leader should step down voluntarily
 		// when the Manager ends. This requires the binary to immediately end when the
 		// Manager is stopped, otherwise, this setting is unsafe. Setting this significantly
@@ -181,11 +194,12 @@ func main() {
 		os.Exit(1)
 	}
 
-	garageClient := garage.NewClient(garageAPIEndpoint, garageAPIToken)
+	garageClient := garage.NewClient(cfg.garageAPIEndpoint, cfg.garageAPIToken)
 	if err := controller.NewBucketReconciler(
 		mgr.GetClient(),
 		mgr.GetScheme(),
 		garageClient.BucketClient,
+		cfg.garageS3Endpoint,
 	).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "Bucket")
 		os.Exit(1)
