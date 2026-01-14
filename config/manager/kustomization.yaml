@@ -23,6 +23,11 @@ patches:
           secretKeyRef:
             name: garage-api-token
             key: api-token
+    - op: add
+      path: /spec/template/spec/containers/0/env/-
+      value:
+        name: GARAGE_S3_API_ENDPOINT
+        value: "https://s3.api.foo.net"
   target:
     group: apps
     kind: Deployment
