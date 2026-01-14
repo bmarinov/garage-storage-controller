@@ -9,7 +9,7 @@ rules:
   verbs: ["create", "delete", "get", "list", "patch", "update", "watch"]
 - apiGroups: [""]
   resources: ["secrets"]
-  verbs: ["create", "delete", "list", "patch", "watch"]
+  verbs: ["create", "delete", "get", "list", "patch", "watch"]
 
 ---
 apiVersion: rbac.authorization.k8s.io/v1
@@ -22,5 +22,5 @@ roleRef:
   name: manager-namespace-access
 subjects:
 - kind: ServiceAccount
-  name: controller-manager
-  namespace: system
+  name: garage-storage-controller-controller-manager
+  namespace: garage-storage-controller-system
