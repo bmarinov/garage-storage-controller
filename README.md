@@ -111,7 +111,31 @@ kubectl apply foo/bar.yaml
 
 TBD
 
-### RBAC
+## Permissions model and security
+
+The controller needs cluster-level permissions for its CRDs. ConfigMap and Secret access can be restricted to specific namespaces.
+
+### CRDs
+
+The controller manages the following custom resources in the `garage.getclustered.net` group:
+- `accesskeys`
+- `accesspolicies`
+- `buckets`
+
+See [config/rbac/role.yaml](config/rbac/role.yaml) for the ClusterRole definition.
+
+### ConfigMaps and Secrets
+
+The controller stores bucket connection details in ConfigMaps and S3 credentials in Secrets. These resources are created in the same namespace as the Bucket and AccessKey resources.
+
+Grant access and enroll a namespace (example):
+```sh
+kubectl apply -k "config/rbac/namespaces/${namespace}"
+```
+
+See [config/rbac/base/role_namespace_access.yaml](config/rbac/base/role_namespace_access.yaml) for the Role definition.
+
+**Note**: The controller does not need cluster-wide access to ConfigMaps or Secrets. Use namespace roles.
 
 ## Development
 
