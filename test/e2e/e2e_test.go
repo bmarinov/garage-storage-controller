@@ -418,7 +418,7 @@ func removeFinalizers(crds ...string) {
 			"kubectl", "get", crd, "-A", "-o", "jsonpath={range .items[*]}{.metadata.namespace}/{.metadata.name}{\"\\n\"}{end}")
 		out, err := utils.Run(cmd)
 		if err == nil && len(out) > 0 {
-			resources := strings.Split(strings.TrimSpace(string(out)), "\n")
+			resources := strings.Split(strings.TrimSpace(out), "\n")
 			for _, resource := range resources {
 				parts := strings.Split(resource, "/")
 				if len(parts) == 2 {
