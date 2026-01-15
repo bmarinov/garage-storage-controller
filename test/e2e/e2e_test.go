@@ -40,12 +40,14 @@ var wellKnown = struct {
 	accessKeyName    string
 	secretName       string
 	bucketName       string
+	configMapName    string
 	accessPolicyName string
 }{
 	// Keep in sync with "../../config/samples/"
 	accessKeyName:    "accesskey-sample",
 	secretName:       "foo-some-secret",
 	bucketName:       "bucket-sample",
+	configMapName:    "bucket-sample",
 	accessPolicyName: "accesspolicy-sample",
 }
 
@@ -364,12 +366,16 @@ var _ = Describe("Manager", Ordered, func() {
 			Expect(err).To(Succeed())
 
 			By("waiting for Bucket ready")
-			By("waiting for AccessKey Ready")
 			Eventually(func(g Gomega) {
 				cmd := exec.Command("kubectl",
 					"wait", "bucket", wellKnown.bucketName, "--for=condition=Ready", "--timeout=1s")
 				g.Expect(cmd.Run()).To(Succeed())
 			}).Should(Succeed())
+
+			By("configmap for bucket created")
+			cmd = exec.Command("kubectl", "get", "cm", "-n", "default",
+				wellKnown.configMapName)
+			Expect(cmd.Run()).To(Succeed())
 
 			By("creating AccessPolicy resource")
 			cmd = exec.Command("kubectl", "apply", "-f", "config/samples/garage_v1alpha1_accesspolicy.yaml")
