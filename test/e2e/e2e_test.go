@@ -34,6 +34,7 @@ import (
 	"github.com/bmarinov/garage-storage-controller/internal/garage/integrationtests"
 	"github.com/bmarinov/garage-storage-controller/internal/tests"
 	"github.com/bmarinov/garage-storage-controller/test/e2e/utils"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 )
 
 var wellKnown = struct {
@@ -338,6 +339,9 @@ var _ = Describe("Manager", Ordered, func() {
 			}
 			Eventually(verifyMetricsAvailable, 2*time.Minute).Should(Succeed())
 		})
+	})
+
+	Context("Custom resources", Ordered, func() {
 
 		It("should deploy external resources", func() {
 
@@ -403,12 +407,23 @@ var _ = Describe("Manager", Ordered, func() {
 				out, err := utils.Run(cmd)
 				Expect(err).ToNot(HaveOccurred(), out)
 			}
+
+			By("secret and configmap deleted")
+			cmd := exec.Command("kubectl", "get", "secret", "-n", "default",
+				wellKnown.secretName)
+			err := cmd.Run()
+			Expect(apierrors.IsNotFound(err)).To(BeTrue())
+
+			cmd = exec.Command("kubectl", "get", "cm", "-n", "default",
+				wellKnown.configMapName)
+			err = cmd.Run()
+			Expect(apierrors.IsNotFound(err)).To(BeTrue())
 		})
-
-		// +kubebuilder:scaffold:e2e-webhooks-checks
-
-		// TBD: webhooks or validation?
 	})
+
+	// +kubebuilder:scaffold:e2e-webhooks-checks
+
+	// TBD: webhooks or validation?
 })
 
 // removeFinalizers ensures that leftover resources can be deleted during teardown.
