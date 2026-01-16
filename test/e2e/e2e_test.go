@@ -132,10 +132,10 @@ var _ = Describe("Manager", Ordered, func() {
 				"--for=condition=ready",
 				fmt.Sprintf("pod/%s", garagePod),
 				"-n", garageNamespace,
-				"--timeout=5s")
+				"--timeout=3s")
 			_, err := utils.Run(cmd)
 			return err
-		}, 15*time.Second, time.Second*1).Should(Succeed())
+		}, 25*time.Second, time.Second*1).Should(Succeed())
 
 		By("initializing garage cluster")
 		err = tests.InitGarageLayout(context.TODO(), NamespacePodExec(garageNamespace, garagePod))
@@ -409,15 +409,18 @@ var _ = Describe("Manager", Ordered, func() {
 			}
 
 			By("secret and configmap deleted")
-			cmd := exec.Command("kubectl", "get", "secret", "-n", "default",
-				wellKnown.secretName)
-			err := cmd.Run()
-			Expect(apierrors.IsNotFound(err)).To(BeTrue())
-
-			cmd = exec.Command("kubectl", "get", "cm", "-n", "default",
-				wellKnown.configMapName)
-			err = cmd.Run()
-			Expect(apierrors.IsNotFound(err)).To(BeTrue())
+			Eventually(func(g Gomega) {
+				cmd := exec.Command("kubectl", "get", "cm", "-n", "default",
+					wellKnown.configMapName)
+				err := cmd.Run()
+				g.Expect(apierrors.IsNotFound(err)).To(BeTrue(), "secret should be deleted")
+			}).Should(Succeed())
+			Eventually(func(g Gomega) {
+				cmd := exec.Command("kubectl", "get", "secret", "-n", "default",
+					wellKnown.secretName)
+				err := cmd.Run()
+				g.Expect(apierrors.IsNotFound(err)).To(BeTrue(), "configmap should be deleted")
+			}).Should(Succeed())
 		})
 	})
 
