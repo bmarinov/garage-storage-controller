@@ -400,11 +400,12 @@ var _ = Describe("Manager", Ordered, func() {
 				"config/samples/garage_v1alpha1_bucket.yaml",
 			}
 
+			By("removing custom resources")
 			for _, manifest := range manifests {
 				cmd := exec.Command("kubectl", "delete", "-f", manifest,
 					"--wait=true", "--timeout=30s")
 				out, err := utils.Run(cmd)
-				Expect(err).ToNot(HaveOccurred(), out)
+				Expect(err).ToNot(HaveOccurred(), "deleting %s: %s", manifest, out)
 			}
 
 			By("secret and configmap deleted")

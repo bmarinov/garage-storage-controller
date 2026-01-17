@@ -39,11 +39,22 @@ import (
 )
 
 var _ = Describe("Bucket Controller", func() {
+	var namespace string
+	BeforeEach(func() {
+		By("create namespace for test")
+		namespace = fixture.RandAlpha(8)
+		testNs := corev1.Namespace{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: namespace,
+			},
+		}
+		Expect(k8sClient.Create(ctx, &testNs)).To(Succeed())
+	})
 	Context("When creating a new bucket", func() {
 		It("should create external S3 bucket matching spec", func() {
 			By("creating a Bucket custom resource")
 			bucketName := "foo-storage"
-			objID := types.NamespacedName{Namespace: "default", Name: bucketName}
+			objID := types.NamespacedName{Namespace: namespace, Name: bucketName}
 
 			resource := garagev1alpha1.Bucket{
 				ObjectMeta: metav1.ObjectMeta{
@@ -105,7 +116,7 @@ var _ = Describe("Bucket Controller", func() {
 			Eventually(func(g Gomega) {
 				var configmap corev1.ConfigMap
 				g.Expect(k8sClient.Get(ctx,
-					types.NamespacedName{Namespace: "default", Name: expectedCMName},
+					types.NamespacedName{Namespace: namespace, Name: expectedCMName},
 					&configmap)).To(Succeed())
 
 				g.Expect(configmap.Data[ConfigMapKeyBucketName]).To(Equal(bucket.Status.BucketName))
@@ -114,9 +125,6 @@ var _ = Describe("Bucket Controller", func() {
 		})
 
 		It("should create ConfigMap with connection details", func() {
-
-			// todo: namespace per context / test
-			namespace := "default"
 			By("creating the bucket")
 			resource := garagev1alpha1.Bucket{
 				ObjectMeta: metav1.ObjectMeta{
@@ -162,7 +170,7 @@ var _ = Describe("Bucket Controller", func() {
 			bucket := &garagev1alpha1.Bucket{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      fixture.RandAlpha(8),
-					Namespace: "default",
+					Namespace: namespace,
 				},
 				Spec: garagev1alpha1.BucketSpec{
 					Name: bucketName,
@@ -239,7 +247,7 @@ var _ = Describe("Bucket Controller", func() {
 			newBucket := &garagev1alpha1.Bucket{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      fixture.RandAlpha(12),
-					Namespace: "default",
+					Namespace: namespace,
 				},
 				Spec: garagev1alpha1.BucketSpec{
 					Name: fixture.RandAlpha(12),
@@ -284,7 +292,7 @@ var _ = Describe("Bucket Controller", func() {
 				resource := garagev1alpha1.Bucket{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      bucketName,
-						Namespace: "default",
+						Namespace: namespace,
 					},
 					Spec: garagev1alpha1.BucketSpec{
 						Name: bucketName,
