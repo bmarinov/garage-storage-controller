@@ -34,7 +34,6 @@ import (
 	"github.com/bmarinov/garage-storage-controller/internal/garage/integrationtests"
 	"github.com/bmarinov/garage-storage-controller/internal/tests"
 	"github.com/bmarinov/garage-storage-controller/test/e2e/utils"
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
 )
 
 var wellKnown = struct {
@@ -410,17 +409,18 @@ var _ = Describe("Manager", Ordered, func() {
 
 			By("secret and configmap deleted")
 			Eventually(func(g Gomega) {
-				cmd := exec.Command("kubectl", "get", "cm", "-n", "default",
-					wellKnown.configMapName)
-				err := cmd.Run()
-				g.Expect(apierrors.IsNotFound(err)).To(BeTrue(), "secret should be deleted")
-			}).Should(Succeed())
+				cmd := exec.Command("kubectl", "get", "secret", wellKnown.secretName,
+					"-n", "default", "--ignore-not-found", "-o", "name")
+				output, _ := utils.Run(cmd)
+				g.Expect(strings.TrimSpace(output)).To(BeEmpty(), "expect no output when not found")
+			}).Should(Succeed(), "should delete Secret after AccessKey")
+
 			Eventually(func(g Gomega) {
-				cmd := exec.Command("kubectl", "get", "secret", "-n", "default",
-					wellKnown.secretName)
-				err := cmd.Run()
-				g.Expect(apierrors.IsNotFound(err)).To(BeTrue(), "configmap should be deleted")
-			}).Should(Succeed())
+				cmd := exec.Command("kubectl", "get", "cm", wellKnown.configMapName,
+					"-n", "default", "--ignore-not-found", "-o", "name")
+				output, _ := utils.Run(cmd)
+				g.Expect(strings.TrimSpace(output)).To(BeEmpty(), "expect no output when not found")
+			}).Should(Succeed(), "should delete ConfigMap after Bucket")
 		})
 	})
 
