@@ -119,10 +119,10 @@ var _ = Describe("Manager", Ordered, func() {
 		)
 		Expect(cmd.Run()).To(Succeed())
 
-		By("deploying the controller-manager")
+		By("deploying garage and controller")
 		cmd = exec.Command("make", "deploy", fmt.Sprintf("IMG=%s", projectImage))
 		_, err = utils.Run(cmd)
-		Expect(err).NotTo(HaveOccurred(), "Failed to deploy the controller-manager")
+		Expect(err).NotTo(HaveOccurred(), "Failed to deploy the garage controller")
 
 		By("waiting for Garage startup")
 		garagePod := "garage-storage-controller-garage-0"
@@ -390,6 +390,30 @@ var _ = Describe("Manager", Ordered, func() {
 				cmd := exec.Command("kubectl",
 					"wait", "accesspolicy", wellKnown.accessPolicyName, "--for=condition=Ready", "--timeout=1s")
 				g.Expect(cmd.Run()).To(Succeed())
+			}).Should(Succeed())
+		})
+
+		// test depends on previous step, overlay -> new resource?
+		It("recreates missing cm for existing buckets", func() {
+			By("storing original ConfigMap UID")
+			cmd := exec.Command("kubectl", "get", "cm", wellKnown.configMapName,
+				"-n", "default", "-o", "jsonpath={.metadata.uid}")
+			originalUID, err := utils.Run(cmd)
+			Expect(err).ToNot(HaveOccurred())
+
+			By("deleting cm")
+			cmd = exec.Command("kubectl", "delete", "cm", "-n", "default",
+				wellKnown.configMapName)
+			Expect(cmd.Run()).To(Succeed())
+
+			By("waiting for new ConfigMap")
+			Eventually(func(g Gomega) {
+				cmd := exec.Command("kubectl", "get", "cm", wellKnown.configMapName,
+					"-n", "default", "-o", "jsonpath={.metadata.uid}")
+				newID, err := utils.Run(cmd)
+				g.Expect(err).NotTo(HaveOccurred())
+
+				g.Expect(newID).ToNot(Equal(originalUID), "expected new ConfigMap ID")
 			}).Should(Succeed())
 		})
 
