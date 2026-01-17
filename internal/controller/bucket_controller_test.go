@@ -26,6 +26,7 @@ import (
 	"github.com/google/uuid"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
@@ -140,7 +141,7 @@ var _ = Describe("Bucket Controller", func() {
 			s3API := "https://s3.test.fooz:3909"
 			sut := NewBucketReconciler(k8sClient, k8sClient.Scheme(), s3Fake, s3API)
 
-			// TODO: reconcile with Eventually?
+			// Note: need to reconcile with Eventually once finalizer is added:
 			_, err := sut.Reconcile(ctx,
 				reconcile.Request{NamespacedName: namespacedName(resource.ObjectMeta)})
 			Expect(err).ToNot(HaveOccurred())
@@ -190,14 +191,10 @@ var _ = Describe("Bucket Controller", func() {
 			s3API.buckets[existing.ID] = existing
 
 			By("reconciling the created resource")
-			controllerReconciler := &BucketReconciler{
-				Client: k8sClient,
-				Scheme: k8sClient.Scheme(),
-				bucket: s3API,
-			}
+			sut := NewBucketReconciler(k8sClient, k8sClient.Scheme(), s3API, "https://abc")
 
 			bucketObjID := namespacedName(bucket.ObjectMeta)
-			_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
+			_, err := sut.Reconcile(ctx, reconcile.Request{
 				NamespacedName: bucketObjID,
 			})
 			Expect(err).NotTo(HaveOccurred())
@@ -283,7 +280,51 @@ var _ = Describe("Bucket Controller", func() {
 			Expect(quota.MaxSize).To(Equal(bucket.Spec.MaxSize.Value()))
 			Expect(quota.MaxObjects).To(Equal(bucket.Spec.MaxObjects))
 		})
+		It("recreates missing ConfigMap on delete", func() {
+			bucket := garagev1alpha1.Bucket{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      fixture.RandAlpha(11),
+					Namespace: namespace,
+				},
+				Spec: garagev1alpha1.BucketSpec{
+					Name: fixture.RandAlpha(8),
+				},
+			}
+			Expect(k8sClient.Create(ctx, &bucket)).To(Succeed())
 
+			By("reconciling initial create")
+			s3API := newS3APIFake()
+			sut := NewBucketReconciler(k8sClient, k8sClient.Scheme(), s3API, "https://foo.bar")
+			Expect(sut.Reconcile(ctx, reconcile.Request{NamespacedName: namespacedName(bucket.ObjectMeta)})).
+				Error().ToNot(HaveOccurred())
+
+			By("fetching original ConfigMap")
+			cmName := bucket.Name
+			var bucketConfigMap corev1.ConfigMap
+			configmapKey := types.NamespacedName{Name: cmName, Namespace: namespace}
+			Expect(k8sClient.
+				Get(ctx, configmapKey, &bucketConfigMap)).
+				To(Succeed())
+			originalUUID := bucketConfigMap.UID
+
+			By("deleting CM out of band")
+			Expect(k8sClient.Delete(ctx, &bucketConfigMap)).To(Succeed())
+			Eventually(func() bool {
+				err := k8sClient.Get(ctx, configmapKey, &bucketConfigMap)
+				return apierrors.IsNotFound(err)
+			}).Should(BeTrue())
+
+			By("triggering reconcile manually")
+			Expect(sut.Reconcile(ctx, reconcile.Request{NamespacedName: namespacedName(bucket.ObjectMeta)})).
+				Error().ToNot(HaveOccurred())
+
+			By("bucket ConfigMap recreated")
+			Eventually(func(g Gomega) {
+				var new corev1.ConfigMap
+				g.Expect(k8sClient.Get(ctx, configmapKey, &new)).To(Succeed())
+				Expect(new.UID).ToNot(Equal(originalUUID))
+			}).Should(Succeed(), "should create new configmap resource")
+		})
 	})
 
 	Context("When creating bucket API resources", func() {
