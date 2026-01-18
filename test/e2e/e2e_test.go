@@ -483,7 +483,10 @@ func removeFinalizers(crds ...string) {
 					ns, name := parts[0], parts[1]
 					cmd = exec.Command("kubectl", "patch", crd, name, "-n", ns,
 						"--type=json", "-p", `[{"op":"remove","path":"/metadata/finalizers"}]`)
-					_, _ = utils.Run(cmd)
+					out, err := utils.Run(cmd)
+					if err != nil {
+						_, _ = fmt.Fprintf(GinkgoWriter, "warn: could not patch resource: %v;\nstdout: %s", err, out)
+					}
 				}
 			}
 		}
