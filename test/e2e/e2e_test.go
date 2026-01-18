@@ -146,6 +146,22 @@ var _ = Describe("Manager", Ordered, func() {
 		cmd := exec.Command("kubectl", "delete", "pod", "curl-metrics", "-n", namespace)
 		_, _ = utils.Run(cmd)
 
+		By("scaling down controller")
+		cmd = exec.Command("kubectl", "scale", "deployment",
+			"garage-storage-controller-controller-manager",
+			"-n", namespace, "--replicas=0")
+		_, _ = utils.Run(cmd)
+
+		cmd = exec.Command(
+			"kubectl",
+			"wait",
+			"--for=delete",
+			"pod",
+			"-l", "app.kubernetes.io/name=garage-storage-controller",
+			"--timeout=30s",
+		)
+		_, _ = utils.Run(cmd)
+
 		By("removing finalizers")
 		removeFinalizers("accesspolicies", "accesskeys", "buckets")
 
@@ -393,7 +409,6 @@ var _ = Describe("Manager", Ordered, func() {
 			}).Should(Succeed())
 		})
 
-		// test depends on previous step, overlay -> new resource?
 		It("recreates missing cm for existing buckets", func() {
 			By("storing original ConfigMap UID")
 			cmd := exec.Command("kubectl", "get", "cm", wellKnown.configMapName,
@@ -414,7 +429,7 @@ var _ = Describe("Manager", Ordered, func() {
 				g.Expect(err).NotTo(HaveOccurred())
 
 				g.Expect(newID).ToNot(Equal(originalUID), "expected new ConfigMap ID")
-			}).Should(Succeed())
+			}, 30*time.Second).Should(Succeed(), "should create new configmap")
 		})
 
 		It("should successfully delete resources", func() {
