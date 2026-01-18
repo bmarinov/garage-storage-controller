@@ -7,7 +7,8 @@ import (
 )
 
 const (
-	BucketReady string = "BucketReady"
+	BucketReady                 string = "BucketReady"
+	BucketConfigMapReady        string = "BucketConfigMapReady"
 )
 
 func initializeBucketConditions(b *garagev1alpha1.Bucket) {

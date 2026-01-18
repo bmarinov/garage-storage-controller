@@ -61,6 +61,14 @@ func NewAccessKeyReconciler(c client.Client, s *runtime.Scheme, keyMgr AccessKey
 	}
 }
 
+// SetupWithManager sets up the controller with the Manager.
+func (r *AccessKeyReconciler) SetupWithManager(mgr ctrl.Manager) error {
+	return ctrl.NewControllerManagedBy(mgr).
+		For(&garagev1alpha1.AccessKey{}).
+		Named("accesskey").
+		Complete(r)
+}
+
 type AccessKeyManager interface {
 	Create(ctx context.Context, keyName string) (s3.AccessKey, error)
 	Get(ctx context.Context, id string) (s3.AccessKey, error)
@@ -282,12 +290,4 @@ func (r *AccessKeyReconciler) ensureSecret(ctx context.Context,
 func namespacedResourceName(meta metav1.ObjectMeta) string {
 	hash := sha256.Sum256([]byte(meta.UID))
 	return fmt.Sprintf("%s-%s-%x", meta.Namespace, meta.Name, hash[:8])
-}
-
-// SetupWithManager sets up the controller with the Manager.
-func (r *AccessKeyReconciler) SetupWithManager(mgr ctrl.Manager) error {
-	return ctrl.NewControllerManagedBy(mgr).
-		For(&garagev1alpha1.AccessKey{}).
-		Named("accesskey").
-		Complete(r)
 }

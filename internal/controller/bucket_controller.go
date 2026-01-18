@@ -158,17 +158,20 @@ func (r *BucketReconciler) reconcileBucket(ctx context.Context, bucket *garagev1
 			return fmt.Errorf("updating external bucket to spec: %w", err)
 		}
 	}
+	markBucketReady(bucket)
 
-	err = r.createBucketCM(ctx, bucket, r.s3APIEndpoint)
+	err = r.ensureConfigMap(ctx, bucket, r.s3APIEndpoint)
 	if err != nil {
 		return fmt.Errorf("create configmap for bucket '%s': %w", alias, err)
 	}
-	markBucketReady(bucket)
 	return nil
 }
 
-// createBucketCM creates a new configmap or updates the values in an existing one.
-func (r *BucketReconciler) createBucketCM(ctx context.Context, bucket *garagev1alpha1.Bucket, endpoint string) error {
+// ensureConfigMap creates a new configmap for the bucket or updates the values in an existing one.
+func (r *BucketReconciler) ensureConfigMap(ctx context.Context,
+	bucket *garagev1alpha1.Bucket,
+	endpoint string,
+) error {
 	cm := corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      bucket.Name,
