@@ -101,18 +101,17 @@ func (r *BucketReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 	initializeBucketConditions(&bucket)
 
 	err = r.reconcileBucket(ctx, &bucket)
-
-	if err != nil {
-		return ctrl.Result{}, err
-	}
-
 	updateBucketReadyCondition(&bucket)
 
 	if !equality.Semantic.DeepEqual(*orig, bucket.Status) {
-		err = r.Status().Patch(ctx, &bucket, client.Merge, client.FieldOwner(bucketControllerName))
-		return ctrl.Result{}, err
+		patchErr := r.Status().Patch(ctx, &bucket, client.Merge, client.FieldOwner(bucketControllerName))
+
+		if err == nil && patchErr != nil {
+			return ctrl.Result{}, patchErr
+		}
 	}
-	return ctrl.Result{}, nil
+
+	return ctrl.Result{}, err
 }
 
 func (r *BucketReconciler) reconcileBucket(ctx context.Context, bucket *garagev1alpha1.Bucket) error {
@@ -163,21 +162,23 @@ func (r *BucketReconciler) reconcileBucket(ctx context.Context, bucket *garagev1
 
 	err = r.ensureConfigMap(ctx, bucket, r.s3APIEndpoint)
 	if err != nil {
+		log.FromContext(ctx).Error(err, "Failed to create ConfigMap for Bucket")
+
 		if errors.Is(err, errNameConflict) {
 			updateBucketCMCondition(bucket, metav1.ConditionFalse,
 				ReasonConfigMapNameConflict,
 				"Unable to use existing ConfigMap for bucket details: %v",
 				err,
 			)
+			return nil
 		} else {
 			updateBucketCMCondition(bucket, metav1.ConditionFalse,
 				"ConfigMapCreateError",
 				"Unable to create ConfigMap: %v",
 				err,
 			)
+			return err
 		}
-		log.FromContext(ctx).Error(err, "Failed to create ConfigMap for Bucket")
-		return nil
 	} else {
 		updateBucketCMCondition(bucket, metav1.ConditionTrue,
 			"ConfigMapReady", "ConfigMap with external bucket details is ready")
