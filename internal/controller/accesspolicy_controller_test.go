@@ -352,10 +352,10 @@ var _ = Describe("AccessPolicy Controller", func() {
 				Spec:       garagev1alpha1.BucketSpec{Name: fixture.RandAlpha(8)},
 			}
 			_ = k8sClient.Create(ctx, &b)
+			bucketController, _ := setupBucket()
+			Expect(bucketController.Reconcile(ctx, reconcile.Request{NamespacedName: namespacedName(b.ObjectMeta)})).
+				Error().ToNot(HaveOccurred())
 
-			markBucketReady(&b)
-			updateBucketReadyCondition(&b)
-			_ = k8sClient.Status().Patch(ctx, &b, client.Merge, client.FieldOwner(bucketControllerName))
 			key := garagev1alpha1.AccessKey{
 				ObjectMeta: metav1.ObjectMeta{Name: accessKeyName, Namespace: namespace},
 				Spec:       garagev1alpha1.AccessKeySpec{SecretName: fixture.RandAlpha(8)},
