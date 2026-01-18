@@ -15,7 +15,7 @@ const (
 )
 
 func initializeBucketConditions(b *garagev1alpha1.Bucket) {
-	conditions := []string{Ready, BucketReady}
+	conditions := []string{Ready, BucketReady, BucketConfigMapReady}
 	initResourceConditions(conditions, &b.Status.Conditions)
 }
 

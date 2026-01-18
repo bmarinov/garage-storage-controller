@@ -162,7 +162,7 @@ var _ = Describe("Bucket Controller", func() {
 			Expect(configmap.Data[ConfigMapKeyBucketName]).To(Equal(resource.Status.BucketName))
 		})
 
-		FIt("sets correct condition and reason on ConfigMap name conflict", func() {
+		It("sets correct condition and reason on ConfigMap name conflict", func() {
 			bucket := garagev1alpha1.Bucket{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      fixture.RandAlpha(12),
