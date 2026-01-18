@@ -27,6 +27,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
@@ -188,22 +189,26 @@ var _ = Describe("Bucket Controller", func() {
 
 			sut, _ := setupBucket()
 			_, err := sut.Reconcile(ctx, reconcile.Request{NamespacedName: namespacedName(bucket.ObjectMeta)})
-			Expect(err).To(HaveOccurred())
+			Expect(err).ToNot(HaveOccurred(), "no error in conflict state, should not retry")
 
 			By("setting correct condition status")
 			Eventually(func(g Gomega) {
-
 				g.Expect(k8sClient.Get(ctx, namespacedName(bucket.ObjectMeta), &bucket)).To(Succeed())
 				g.Expect(checkCondition(bucket.Status.Conditions, BucketReady, metav1.ConditionTrue)).
 					Should(Succeed())
-
 				g.Expect(checkCondition(bucket.Status.Conditions, BucketConfigMapReady, metav1.ConditionFalse)).
 					Should(Succeed())
-			}).Should(Succeed())
-		})
 
-		// TODO:
-		// It("sets status and reason on configmap name conflict")
+				cmCondition := meta.FindStatusCondition(bucket.Status.Conditions, BucketConfigMapReady)
+				Expect(cmCondition.Reason).To(Equal(ReasonConfigMapNameConflict))
+			}).Should(Succeed())
+
+			By("top-level Ready condition reflects ConfigMap issue")
+			readyCondition := meta.FindStatusCondition(bucket.Status.Conditions, Ready)
+			Expect(readyCondition).ToNot(BeNil())
+			Expect(readyCondition.Status).To(Equal(metav1.ConditionFalse), "top-level Ready must be false")
+			Expect(readyCondition.Reason).To(Equal(ReasonConfigMapNameConflict), "should reflect underlying configuration conflict")
+		})
 	})
 
 	Context("When reconciling existing buckets", func() {

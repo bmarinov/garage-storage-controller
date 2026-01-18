@@ -51,8 +51,6 @@ type AccessKeyReconciler struct {
 	accessKey AccessKeyManager
 }
 
-var errNameConflict = errors.New("name conflict with existing resource")
-
 func NewAccessKeyReconciler(c client.Client, s *runtime.Scheme, keyMgr AccessKeyManager) *AccessKeyReconciler {
 	return &AccessKeyReconciler{
 		client:    c,
