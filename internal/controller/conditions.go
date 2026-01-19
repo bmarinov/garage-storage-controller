@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"errors"
 	"fmt"
 
 	"k8s.io/apimachinery/pkg/api/meta"
@@ -16,6 +17,8 @@ const (
 	defaultReadyReason  = "Available"
 	defaultReadyMessage = "All conditions met"
 )
+
+var errNameConflict = errors.New("name conflict with existing resource")
 
 func initResourceConditions(allConditions []string, conditions *[]metav1.Condition) {
 	for _, cond := range allConditions {
