@@ -30,6 +30,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	garagev1alpha1 "github.com/bmarinov/garage-storage-controller/api/v1alpha1"
 	"github.com/bmarinov/garage-storage-controller/internal/s3"
@@ -100,18 +101,17 @@ func (r *BucketReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 	initializeBucketConditions(&bucket)
 
 	err = r.reconcileBucket(ctx, &bucket)
-
-	if err != nil {
-		return ctrl.Result{}, err
-	}
-
 	updateBucketReadyCondition(&bucket)
 
 	if !equality.Semantic.DeepEqual(*orig, bucket.Status) {
-		err = r.Status().Patch(ctx, &bucket, client.Merge, client.FieldOwner(bucketControllerName))
-		return ctrl.Result{}, err
+		patchErr := r.Status().Patch(ctx, &bucket, client.Merge, client.FieldOwner(bucketControllerName))
+
+		if err == nil && patchErr != nil {
+			return ctrl.Result{}, patchErr
+		}
 	}
-	return ctrl.Result{}, nil
+
+	return ctrl.Result{}, err
 }
 
 func (r *BucketReconciler) reconcileBucket(ctx context.Context, bucket *garagev1alpha1.Bucket) error {
@@ -158,17 +158,39 @@ func (r *BucketReconciler) reconcileBucket(ctx context.Context, bucket *garagev1
 			return fmt.Errorf("updating external bucket to spec: %w", err)
 		}
 	}
-
-	err = r.createBucketCM(ctx, bucket, r.s3APIEndpoint)
-	if err != nil {
-		return fmt.Errorf("create configmap for bucket '%s': %w", alias, err)
-	}
 	markBucketReady(bucket)
+
+	err = r.ensureConfigMap(ctx, bucket, r.s3APIEndpoint)
+	if err != nil {
+		log.FromContext(ctx).Error(err, "Failed to create ConfigMap for Bucket")
+
+		if errors.Is(err, errNameConflict) {
+			updateBucketCMCondition(bucket, metav1.ConditionFalse,
+				ReasonConfigMapNameConflict,
+				"Unable to use existing ConfigMap for bucket details: %v",
+				err,
+			)
+			return nil
+		} else {
+			updateBucketCMCondition(bucket, metav1.ConditionFalse,
+				"ConfigMapCreateError",
+				"Unable to create ConfigMap: %v",
+				err,
+			)
+			return err
+		}
+	} else {
+		updateBucketCMCondition(bucket, metav1.ConditionTrue,
+			"ConfigMapReady", "ConfigMap with external bucket details is ready")
+	}
 	return nil
 }
 
-// createBucketCM creates a new configmap or updates the values in an existing one.
-func (r *BucketReconciler) createBucketCM(ctx context.Context, bucket *garagev1alpha1.Bucket, endpoint string) error {
+// ensureConfigMap creates a new configmap for the bucket or updates the values in an existing one.
+func (r *BucketReconciler) ensureConfigMap(ctx context.Context,
+	bucket *garagev1alpha1.Bucket,
+	endpoint string,
+) error {
 	cm := corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      bucket.Name,
@@ -176,7 +198,16 @@ func (r *BucketReconciler) createBucketCM(ctx context.Context, bucket *garagev1a
 		},
 	}
 
-	_, err := controllerutil.CreateOrUpdate(ctx, r.Client, &cm, func() error {
+	opResult, err := controllerutil.CreateOrUpdate(ctx, r.Client, &cm, func() error {
+		if cm.UID != "" {
+			// configmap already exists, check owner:
+			if !metav1.IsControlledBy(&cm, bucket) {
+				return fmt.Errorf(
+					"conflict for ConfigMap %s/%s: resource already exists and is not owned by Bucket %s: %w",
+					cm.Namespace, cm.Name, bucket.Name, errNameConflict)
+			}
+		}
+
 		err := controllerutil.SetControllerReference(bucket, &cm, r.Scheme)
 		if err != nil {
 			return err
@@ -187,6 +218,11 @@ func (r *BucketReconciler) createBucketCM(ctx context.Context, bucket *garagev1a
 		}
 		return nil
 	})
+
+	if opResult == controllerutil.OperationResultCreated {
+		log.FromContext(ctx).Info("ConfigMap for Bucket created",
+			"namespace", bucket.Namespace, "bucket", bucket.Name, "name", cm.Name)
+	}
 
 	return err
 }

@@ -40,12 +40,14 @@ var wellKnown = struct {
 	accessKeyName    string
 	secretName       string
 	bucketName       string
+	configMapName    string
 	accessPolicyName string
 }{
 	// Keep in sync with "../../config/samples/"
 	accessKeyName:    "accesskey-sample",
 	secretName:       "foo-some-secret",
 	bucketName:       "bucket-sample",
+	configMapName:    "bucket-sample",
 	accessPolicyName: "accesspolicy-sample",
 }
 
@@ -117,10 +119,10 @@ var _ = Describe("Manager", Ordered, func() {
 		)
 		Expect(cmd.Run()).To(Succeed())
 
-		By("deploying the controller-manager")
+		By("deploying garage and controller")
 		cmd = exec.Command("make", "deploy", fmt.Sprintf("IMG=%s", projectImage))
 		_, err = utils.Run(cmd)
-		Expect(err).NotTo(HaveOccurred(), "Failed to deploy the controller-manager")
+		Expect(err).NotTo(HaveOccurred(), "Failed to deploy the garage controller")
 
 		By("waiting for Garage startup")
 		garagePod := "garage-storage-controller-garage-0"
@@ -129,10 +131,10 @@ var _ = Describe("Manager", Ordered, func() {
 				"--for=condition=ready",
 				fmt.Sprintf("pod/%s", garagePod),
 				"-n", garageNamespace,
-				"--timeout=5s")
+				"--timeout=3s")
 			_, err := utils.Run(cmd)
 			return err
-		}, 15*time.Second, time.Second*1).Should(Succeed())
+		}, 25*time.Second, time.Second*1).Should(Succeed())
 
 		By("initializing garage cluster")
 		err = tests.InitGarageLayout(context.TODO(), NamespacePodExec(garageNamespace, garagePod))
@@ -142,6 +144,22 @@ var _ = Describe("Manager", Ordered, func() {
 	AfterAll(func() {
 		By("cleaning up the curl pod for metrics")
 		cmd := exec.Command("kubectl", "delete", "pod", "curl-metrics", "-n", namespace)
+		_, _ = utils.Run(cmd)
+
+		By("scaling down controller")
+		cmd = exec.Command("kubectl", "scale", "deployment",
+			"garage-storage-controller-controller-manager",
+			"-n", namespace, "--replicas=0")
+		_, _ = utils.Run(cmd)
+
+		cmd = exec.Command(
+			"kubectl",
+			"wait",
+			"--for=delete",
+			"pod",
+			"-l", "app.kubernetes.io/name=garage-storage-controller",
+			"--timeout=30s",
+		)
 		_, _ = utils.Run(cmd)
 
 		By("removing finalizers")
@@ -336,6 +354,9 @@ var _ = Describe("Manager", Ordered, func() {
 			}
 			Eventually(verifyMetricsAvailable, 2*time.Minute).Should(Succeed())
 		})
+	})
+
+	Context("Custom resources", Ordered, func() {
 
 		It("should deploy external resources", func() {
 
@@ -364,12 +385,16 @@ var _ = Describe("Manager", Ordered, func() {
 			Expect(err).To(Succeed())
 
 			By("waiting for Bucket ready")
-			By("waiting for AccessKey Ready")
 			Eventually(func(g Gomega) {
 				cmd := exec.Command("kubectl",
 					"wait", "bucket", wellKnown.bucketName, "--for=condition=Ready", "--timeout=1s")
 				g.Expect(cmd.Run()).To(Succeed())
 			}).Should(Succeed())
+
+			By("configmap for bucket created")
+			cmd = exec.Command("kubectl", "get", "cm", "-n", "default",
+				wellKnown.configMapName)
+			Expect(cmd.Run()).To(Succeed())
 
 			By("creating AccessPolicy resource")
 			cmd = exec.Command("kubectl", "apply", "-f", "config/samples/garage_v1alpha1_accesspolicy.yaml")
@@ -384,6 +409,30 @@ var _ = Describe("Manager", Ordered, func() {
 			}).Should(Succeed())
 		})
 
+		It("recreates missing cm for existing buckets", func() {
+			Skip("See issue #22: CMs are not being watched.")
+			By("storing original ConfigMap UID")
+			cmd := exec.Command("kubectl", "get", "cm", wellKnown.configMapName,
+				"-n", "default", "-o", "jsonpath={.metadata.uid}")
+			originalUID, err := utils.Run(cmd)
+			Expect(err).ToNot(HaveOccurred())
+
+			By("deleting cm")
+			cmd = exec.Command("kubectl", "delete", "cm", "-n", "default",
+				wellKnown.configMapName)
+			Expect(cmd.Run()).To(Succeed())
+
+			By("waiting for new ConfigMap")
+			Eventually(func(g Gomega) {
+				cmd := exec.Command("kubectl", "get", "cm", wellKnown.configMapName,
+					"-n", "default", "-o", "jsonpath={.metadata.uid}")
+				newID, err := utils.Run(cmd)
+				g.Expect(err).NotTo(HaveOccurred())
+
+				g.Expect(newID).ToNot(Equal(originalUID), "expected new ConfigMap ID")
+			}, 30*time.Second).Should(Succeed(), "should create new configmap")
+		})
+
 		It("should successfully delete resources", func() {
 			manifests := []string{
 				"config/samples/garage_v1alpha1_accesspolicy.yaml",
@@ -391,18 +440,34 @@ var _ = Describe("Manager", Ordered, func() {
 				"config/samples/garage_v1alpha1_bucket.yaml",
 			}
 
+			By("removing custom resources")
 			for _, manifest := range manifests {
 				cmd := exec.Command("kubectl", "delete", "-f", manifest,
 					"--wait=true", "--timeout=30s")
 				out, err := utils.Run(cmd)
-				Expect(err).ToNot(HaveOccurred(), out)
+				Expect(err).ToNot(HaveOccurred(), "deleting %s: %s", manifest, out)
 			}
+
+			By("secret and configmap deleted")
+			Eventually(func(g Gomega) {
+				cmd := exec.Command("kubectl", "get", "secret", wellKnown.secretName,
+					"-n", "default", "--ignore-not-found", "-o", "name")
+				output, _ := utils.Run(cmd)
+				g.Expect(strings.TrimSpace(output)).To(BeEmpty(), "expect no output when not found")
+			}).Should(Succeed(), "should delete Secret after AccessKey")
+
+			Eventually(func(g Gomega) {
+				cmd := exec.Command("kubectl", "get", "cm", wellKnown.configMapName,
+					"-n", "default", "--ignore-not-found", "-o", "name")
+				output, _ := utils.Run(cmd)
+				g.Expect(strings.TrimSpace(output)).To(BeEmpty(), "expect no output when not found")
+			}).Should(Succeed(), "should delete ConfigMap after Bucket")
 		})
-
-		// +kubebuilder:scaffold:e2e-webhooks-checks
-
-		// TBD: webhooks or validation?
 	})
+
+	// +kubebuilder:scaffold:e2e-webhooks-checks
+
+	// TBD: webhooks or validation?
 })
 
 // removeFinalizers ensures that leftover resources can be deleted during teardown.
@@ -412,14 +477,17 @@ func removeFinalizers(crds ...string) {
 			"kubectl", "get", crd, "-A", "-o", "jsonpath={range .items[*]}{.metadata.namespace}/{.metadata.name}{\"\\n\"}{end}")
 		out, err := utils.Run(cmd)
 		if err == nil && len(out) > 0 {
-			resources := strings.Split(strings.TrimSpace(string(out)), "\n")
+			resources := strings.Split(strings.TrimSpace(out), "\n")
 			for _, resource := range resources {
 				parts := strings.Split(resource, "/")
 				if len(parts) == 2 {
 					ns, name := parts[0], parts[1]
 					cmd = exec.Command("kubectl", "patch", crd, name, "-n", ns,
 						"--type=json", "-p", `[{"op":"remove","path":"/metadata/finalizers"}]`)
-					_, _ = utils.Run(cmd)
+					out, err := utils.Run(cmd)
+					if err != nil {
+						_, _ = fmt.Fprintf(GinkgoWriter, "warn: could not patch resource: %v;\nstdout: %s", err, out)
+					}
 				}
 			}
 		}

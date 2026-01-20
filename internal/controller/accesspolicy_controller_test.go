@@ -70,9 +70,10 @@ var _ = Describe("AccessPolicy Controller", func() {
 					Spec:       garagev1alpha1.BucketSpec{Name: "blap-bucket3132"},
 				}
 				Expect(k8sClient.Create(ctx, &b)).To(Succeed())
-				markBucketReady(&b)
-				updateBucketReadyCondition(&b)
-				Expect(k8sClient.Status().Patch(ctx, &b, client.Merge, client.FieldOwner(bucketControllerName))).To(Succeed())
+
+				bucketController, _ := setupBucket()
+				Expect(bucketController.Reconcile(ctx, reconcile.Request{NamespacedName: namespacedName(b.ObjectMeta)})).
+					Error().ToNot(HaveOccurred())
 			}
 			if keyExists {
 				k := garagev1alpha1.AccessKey{
@@ -137,12 +138,14 @@ var _ = Describe("AccessPolicy Controller", func() {
 			Expect(k8sClient.Create(ctx, &b)).To(Succeed())
 
 			if bucketReady {
-				markBucketReady(&b)
+				bucketController, _ := setupBucket()
+				Expect(bucketController.Reconcile(ctx, reconcile.Request{NamespacedName: namespacedName(b.ObjectMeta)})).
+					Error().ToNot(HaveOccurred())
 			} else {
+				initializeBucketConditions(&b)
 				markBucketNotReady(&b, "FooUnknown", "Not ready in test")
+				Expect(k8sClient.Status().Patch(ctx, &b, client.Merge, client.FieldOwner(bucketControllerName))).To(Succeed())
 			}
-			updateBucketReadyCondition(&b)
-			Expect(k8sClient.Status().Patch(ctx, &b, client.Merge, client.FieldOwner(bucketControllerName))).To(Succeed())
 
 			k := garagev1alpha1.AccessKey{
 				ObjectMeta: metav1.ObjectMeta{Name: accessKeyName, Namespace: namespace},
@@ -200,19 +203,17 @@ var _ = Describe("AccessPolicy Controller", func() {
 
 		It("should reconcile with dependencies ready", func() {
 			By("creating dependencies")
-			bucketName := "bucket-foo"
-			accessKeyName := "key-foo-bar"
+			bucketName := fixture.RandAlpha(8)
+			accessKeyName := fixture.RandAlpha(8)
 
 			bucketRes := garagev1alpha1.Bucket{
 				ObjectMeta: metav1.ObjectMeta{Name: bucketName, Namespace: namespace},
-				Spec:       garagev1alpha1.BucketSpec{Name: "blap-bucket3132"},
+				Spec:       garagev1alpha1.BucketSpec{Name: fixture.RandAlpha(8)},
 			}
 			Expect(k8sClient.Create(ctx, &bucketRes)).To(Succeed())
-			markBucketReady(&bucketRes)
-			updateBucketReadyCondition(&bucketRes)
-			// set status fields to fake readiness
-			bucketRes.Status.BucketID = fixture.RandAlpha(12)
-			Expect(k8sClient.Status().Patch(ctx, &bucketRes, client.Merge, client.FieldOwner(bucketControllerName))).To(Succeed())
+			bucketController, _ := setupBucket()
+			Expect(bucketController.Reconcile(ctx, reconcile.Request{NamespacedName: namespacedName(bucketRes.ObjectMeta)})).
+				Error().ToNot(HaveOccurred())
 
 			keyRes := garagev1alpha1.AccessKey{
 				ObjectMeta: metav1.ObjectMeta{Name: accessKeyName, Namespace: namespace},
@@ -285,9 +286,10 @@ var _ = Describe("AccessPolicy Controller", func() {
 			}
 			_ = k8sClient.Create(ctx, &b)
 
-			markBucketReady(&b)
-			updateBucketReadyCondition(&b)
-			_ = k8sClient.Status().Patch(ctx, &b, client.Merge, client.FieldOwner(bucketControllerName))
+			bucketController, _ := setupBucket()
+			Expect(bucketController.Reconcile(ctx, reconcile.Request{NamespacedName: namespacedName(b.ObjectMeta)})).
+				Error().ToNot(HaveOccurred())
+
 			k := garagev1alpha1.AccessKey{
 				ObjectMeta: metav1.ObjectMeta{Name: accessKeyName, Namespace: namespace},
 				Spec:       garagev1alpha1.AccessKeySpec{SecretName: "zzz-ns-secret"},
@@ -350,10 +352,10 @@ var _ = Describe("AccessPolicy Controller", func() {
 				Spec:       garagev1alpha1.BucketSpec{Name: fixture.RandAlpha(8)},
 			}
 			_ = k8sClient.Create(ctx, &b)
+			bucketController, _ := setupBucket()
+			Expect(bucketController.Reconcile(ctx, reconcile.Request{NamespacedName: namespacedName(b.ObjectMeta)})).
+				Error().ToNot(HaveOccurred())
 
-			markBucketReady(&b)
-			updateBucketReadyCondition(&b)
-			_ = k8sClient.Status().Patch(ctx, &b, client.Merge, client.FieldOwner(bucketControllerName))
 			key := garagev1alpha1.AccessKey{
 				ObjectMeta: metav1.ObjectMeta{Name: accessKeyName, Namespace: namespace},
 				Spec:       garagev1alpha1.AccessKeySpec{SecretName: fixture.RandAlpha(8)},

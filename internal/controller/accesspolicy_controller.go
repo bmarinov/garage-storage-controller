@@ -32,7 +32,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
-	logf "sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	garagev1alpha1 "github.com/bmarinov/garage-storage-controller/api/v1alpha1"
@@ -62,6 +62,16 @@ func NewAccessPolicyReconciler(c client.Client,
 	}
 }
 
+// SetupWithManager sets up the controller with the Manager.
+func (r *AccessPolicyReconciler) SetupWithManager(mgr ctrl.Manager) error {
+	return ctrl.NewControllerManagedBy(mgr).
+		For(&garagev1alpha1.AccessPolicy{}).
+		Watches(&garagev1alpha1.AccessKey{},
+			handler.EnqueueRequestsFromMapFunc(r.findPoliciesForAccessKey)).
+		Named("accesspolicy").
+		Complete(r)
+}
+
 // errDependencyNotReady should resolve itself given enough time and recon can be retried.
 var errDependencyNotReady = errors.New("resource dependency is not ready")
 
@@ -73,7 +83,7 @@ const accesskeyLabel = "garage.getclustered.net/accesskey-name"
 // +kubebuilder:rbac:groups=garage.getclustered.net,resources=accesspolicies/finalizers,verbs=update
 
 func (r *AccessPolicyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	logger := logf.FromContext(ctx)
+	logger := log.FromContext(ctx)
 
 	var policy garagev1alpha1.AccessPolicy
 	err := r.client.Get(ctx, req.NamespacedName, &policy)
@@ -97,13 +107,17 @@ func (r *AccessPolicyReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		if !controllerutil.ContainsFinalizer(&policy, finalizerName) {
 			return ctrl.Result{}, nil
 		}
-
 		err = r.adminClient.SetPermissions(ctx,
 			policy.Status.AccessKeyID,
 			policy.Status.BucketID,
 			s3.Permissions{})
-		if err != nil && !errors.Is(err, s3.ErrResourceNotFound) {
-			return ctrl.Result{}, err
+		if err != nil {
+			if errors.Is(err, s3.ErrResourceNotFound) {
+				logger.Info("AccessPolicy finalizer: key or bucket already deleted")
+			} else {
+				log.FromContext(ctx).Error(err, "Removing permissions in finalizer failed")
+				return ctrl.Result{}, err
+			}
 		}
 
 		_ = controllerutil.RemoveFinalizer(&policy, finalizerName)
@@ -150,16 +164,6 @@ func (r *AccessPolicyReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	}
 
 	return result, resultErr
-}
-
-// SetupWithManager sets up the controller with the Manager.
-func (r *AccessPolicyReconciler) SetupWithManager(mgr ctrl.Manager) error {
-	return ctrl.NewControllerManagedBy(mgr).
-		For(&garagev1alpha1.AccessPolicy{}).
-		Watches(&garagev1alpha1.AccessKey{},
-			handler.EnqueueRequestsFromMapFunc(r.findPoliciesForAccessKey)).
-		Named("accesspolicy").
-		Complete(r)
 }
 
 func (r *AccessPolicyReconciler) findPoliciesForAccessKey(ctx context.Context, obj client.Object) []reconcile.Request {
