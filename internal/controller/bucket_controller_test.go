@@ -84,22 +84,9 @@ var _ = Describe("Bucket Controller", func() {
 			var bucket garagev1alpha1.Bucket
 			Eventually(func(g Gomega) {
 				g.Expect(k8sClient.Get(ctx, objID, &bucket)).To(Succeed())
-
-				g.Expect(bucket.Status.Conditions).To(ContainElement(
-					SatisfyAll(
-						WithTransform(
-							func(c metav1.Condition) string { return c.Type },
-							Equal(Ready),
-						),
-						WithTransform(
-							func(c metav1.Condition) metav1.ConditionStatus { return c.Status },
-							Equal(metav1.ConditionTrue),
-						),
-						WithTransform(
-							func(c metav1.Condition) int64 { return c.ObservedGeneration },
-							Equal(bucket.Generation),
-						)),
-				))
+				g.Expect(checkCondition(bucket.Status.Conditions, Ready, metav1.ConditionTrue)).To(Succeed())
+				bucketCond := meta.FindStatusCondition(bucket.Status.Conditions, Ready)
+				g.Expect(bucketCond.ObservedGeneration).To(Equal(bucket.Generation))
 			}).Should(Succeed())
 
 			By("retrieving bucket with suffixed name")
@@ -228,8 +215,9 @@ var _ = Describe("Bucket Controller", func() {
 				_ = k8sClient.Delete(ctx, bucket)
 			})
 
+			sut, s3API := setupBucket()
+
 			By("simulating reconcile error after external bucket creation")
-			s3API := newS3APIFake()
 			existing := s3.Bucket{
 				ID:            "3f5z",
 				GlobalAliases: []string{suffixedResourceName(bucket.ObjectMeta)},
@@ -237,8 +225,6 @@ var _ = Describe("Bucket Controller", func() {
 			s3API.buckets[existing.ID] = existing
 
 			By("reconciling the created resource")
-			sut := NewBucketReconciler(k8sClient, k8sClient.Scheme(), s3API, "https://abc")
-
 			bucketObjID := namespacedName(bucket.ObjectMeta)
 			_, err := sut.Reconcile(ctx, reconcile.Request{
 				NamespacedName: bucketObjID,
@@ -246,34 +232,17 @@ var _ = Describe("Bucket Controller", func() {
 			Expect(err).NotTo(HaveOccurred())
 
 			By("storing resource condition and generation in status")
-			// TODO: refactor and drop WithTransform:
 			Eventually(func(g Gomega) {
 				var bucket garagev1alpha1.Bucket
 				g.Expect(k8sClient.Get(ctx, bucketObjID, &bucket)).To(Succeed())
 
-				var bucketCond metav1.Condition
-				_ = g.Expect((bucket.Status.Conditions)).To(ContainElement(SatisfyAll(
-					WithTransform(
-						func(c metav1.Condition) string { return c.Type },
-						Equal(BucketReady),
-					),
-					WithTransform(
-						func(c metav1.Condition) metav1.ConditionStatus { return c.Status },
-						Equal(metav1.ConditionTrue),
-					),
-				), &bucketCond))
+				bucketCond := meta.FindStatusCondition(bucket.Status.Conditions, BucketReady)
+				g.Expect(bucketCond).ToNot(BeNil())
+				g.Expect(bucketCond.Status).To(Equal(metav1.ConditionTrue), "bucket should be ready")
 
-				var readyCond metav1.Condition
-				_ = g.Expect((bucket.Status.Conditions)).To(ContainElement(SatisfyAll(
-					WithTransform(
-						func(c metav1.Condition) string { return c.Type },
-						Equal(Ready),
-					),
-					WithTransform(
-						func(c metav1.Condition) metav1.ConditionStatus { return c.Status },
-						Equal(metav1.ConditionTrue),
-					),
-				), &readyCond))
+				readyCond := meta.FindStatusCondition(bucket.Status.Conditions, Ready)
+				g.Expect(readyCond).ToNot(BeNil())
+				g.Expect(readyCond.Status).To(Equal(metav1.ConditionTrue))
 
 				g.Expect(bucketCond.ObservedGeneration).To(Equal(bucket.Generation))
 				g.Expect(readyCond.ObservedGeneration).To(Equal(bucket.Generation))
@@ -303,12 +272,11 @@ var _ = Describe("Bucket Controller", func() {
 				_ = k8sClient.Delete(ctx, newBucket)
 			})
 
-			s3API := newS3APIFake()
-			controllerReconciler := NewBucketReconciler(k8sClient, k8sClient.Scheme(), s3API, "foo/bar")
+			sut, s3API := setupBucket()
 
 			By("reconciling")
 			objID := namespacedName(newBucket.ObjectMeta)
-			_, _ = controllerReconciler.Reconcile(ctx, reconcile.Request{NamespacedName: objID})
+			_, _ = sut.Reconcile(ctx, reconcile.Request{NamespacedName: objID})
 
 			By("setting bucket quota")
 			var bucket garagev1alpha1.Bucket
@@ -319,7 +287,7 @@ var _ = Describe("Bucket Controller", func() {
 			Expect(k8sClient.Update(ctx, &bucket)).To(Succeed())
 
 			// act
-			_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{NamespacedName: objID})
+			_, err := sut.Reconcile(ctx, reconcile.Request{NamespacedName: objID})
 			Expect(err).ShouldNot(HaveOccurred())
 
 			// assert
@@ -340,8 +308,7 @@ var _ = Describe("Bucket Controller", func() {
 			Expect(k8sClient.Create(ctx, &bucket)).To(Succeed())
 
 			By("reconciling initial create")
-			s3API := newS3APIFake()
-			sut := NewBucketReconciler(k8sClient, k8sClient.Scheme(), s3API, "https://foo.bar")
+			sut, _ := setupBucket()
 			Expect(sut.Reconcile(ctx, reconcile.Request{NamespacedName: namespacedName(bucket.ObjectMeta)})).
 				Error().ToNot(HaveOccurred())
 

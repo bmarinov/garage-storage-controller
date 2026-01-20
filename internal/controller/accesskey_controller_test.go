@@ -135,18 +135,8 @@ var _ = Describe("AccessKey Controller", func() {
 				var accessKey garagev1alpha1.AccessKey
 				g.Expect(k8sClient.Get(ctx, typeNamespacedName, &accessKey)).To(Succeed())
 
-				var keyCondition metav1.Condition
-				_ = g.Expect((accessKey.Status.Conditions)).To(ContainElement(SatisfyAll(
-					WithTransform(
-						func(c metav1.Condition) string { return c.Type },
-						Equal(AccessKeyReady),
-					),
-					WithTransform(
-						func(c metav1.Condition) metav1.ConditionStatus { return c.Status },
-						Equal(metav1.ConditionTrue),
-					),
-				), &keyCondition))
-
+				g.Expect(checkCondition(accessKey.Status.Conditions, AccessKeyReady, metav1.ConditionTrue)).To(Succeed())
+				keyCondition := meta.FindStatusCondition(accessKey.Status.Conditions, AccessKeyReady)
 				g.Expect(keyCondition.ObservedGeneration).To(Equal(accessKey.Generation))
 			}).Should(Succeed())
 

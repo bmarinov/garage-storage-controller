@@ -62,6 +62,16 @@ func NewAccessPolicyReconciler(c client.Client,
 	}
 }
 
+// SetupWithManager sets up the controller with the Manager.
+func (r *AccessPolicyReconciler) SetupWithManager(mgr ctrl.Manager) error {
+	return ctrl.NewControllerManagedBy(mgr).
+		For(&garagev1alpha1.AccessPolicy{}).
+		Watches(&garagev1alpha1.AccessKey{},
+			handler.EnqueueRequestsFromMapFunc(r.findPoliciesForAccessKey)).
+		Named("accesspolicy").
+		Complete(r)
+}
+
 // errDependencyNotReady should resolve itself given enough time and recon can be retried.
 var errDependencyNotReady = errors.New("resource dependency is not ready")
 
@@ -154,16 +164,6 @@ func (r *AccessPolicyReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	}
 
 	return result, resultErr
-}
-
-// SetupWithManager sets up the controller with the Manager.
-func (r *AccessPolicyReconciler) SetupWithManager(mgr ctrl.Manager) error {
-	return ctrl.NewControllerManagedBy(mgr).
-		For(&garagev1alpha1.AccessPolicy{}).
-		Watches(&garagev1alpha1.AccessKey{},
-			handler.EnqueueRequestsFromMapFunc(r.findPoliciesForAccessKey)).
-		Named("accesspolicy").
-		Complete(r)
 }
 
 func (r *AccessPolicyReconciler) findPoliciesForAccessKey(ctx context.Context, obj client.Object) []reconcile.Request {
