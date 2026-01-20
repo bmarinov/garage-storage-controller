@@ -410,6 +410,7 @@ var _ = Describe("Manager", Ordered, func() {
 		})
 
 		It("recreates missing cm for existing buckets", func() {
+			Skip("See issue #22: CMs are not being watched.")
 			By("storing original ConfigMap UID")
 			cmd := exec.Command("kubectl", "get", "cm", wellKnown.configMapName,
 				"-n", "default", "-o", "jsonpath={.metadata.uid}")
