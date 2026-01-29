@@ -52,6 +52,7 @@ jobs:
           else
             VERSION=$(git describe --tags --always --dirty)
           fi
+          echo "VERSION=${VERSION}" >> $GITHUB_OUTPUT
 
       - name: Build image
         run: make docker-build IMG=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.version.outputs.VERSION }}
