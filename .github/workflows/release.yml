@@ -38,6 +38,8 @@ jobs:
                   exit 0
               fi
           done
+          echo "Completed E2E test not found"
+          exit 1
 
       - name: Log in to ghcr
         run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ${{ env.REGISTRY }} -u ${{ github.actor }} --password-stdin
