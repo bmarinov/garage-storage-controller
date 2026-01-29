@@ -38,6 +38,8 @@ jobs:
                   exit 0
               fi
           done
+          echo "Completed E2E test not found"
+          exit 1
 
       - name: Log in to ghcr
         run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ${{ env.REGISTRY }} -u ${{ github.actor }} --password-stdin
@@ -63,4 +65,4 @@ jobs:
         run: |
           docker tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.version.outputs.VERSION }} \
                      ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
-          make docker-push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+          make docker-push IMG=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
