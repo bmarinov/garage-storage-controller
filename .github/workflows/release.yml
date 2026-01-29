@@ -23,22 +23,19 @@ jobs:
         with:
           fetch-depth: 0
 
-      # This might be too agressive: once a build has failed a commit will never 'recover'
-      - name: Check commit status
+      - name: Check E2E test status
         run: |
-          checks=$(curl -s \
-            https://api.github.com/repos/bmarinov/garage-storage-controller/commits/a70becf78a6b386832f384b9ae2605f129af10a2/check-runs \
-            | jq -c '.check_runs[] | {name, conclusion}')
+          readarray -t checks <<< "$(
+            curl -s \
+                https://api.github.com/repos/${{ github.repository }}/commits/${{ github.sha }}/check-runs \
+                | jq -r '.check_runs[] | [.name, .conclusion, .completed_at] | @tsv')"
 
-          echo "$checks" | while read -r check; do
-              name=$(echo "$check" | jq -r .name)
-              conclusion=$(echo "$check" | jq -r .conclusion)
-              
-              if [ "$conclusion" != "success" ]; then
-                  echo "Failed build on ${{ github.sha }}"
-                  echo "'$name': '$conclusion'"
-                  echo "All runs: $checks"
-                  exit 1
+          for check in "${checks[@]}"; do
+              IFS=$'\t' read -r name conclusion completed_at <<< "$check"
+
+              if [ "$name" == "test-e2e" ] &&  [ "$conclusion" == "success" ]; then
+                  echo "E2E test: $conclusion at $completed_at"
+                  exit 0
               fi
           done
 
