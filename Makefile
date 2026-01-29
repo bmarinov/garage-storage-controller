@@ -146,6 +146,16 @@ build-installer: manifests generate kustomize ## Generate a consolidated YAML wi
 	cd config/manager && "$(KUSTOMIZE)" edit set image controller=${IMG}
 	"$(KUSTOMIZE)" build config/e2e > dist/install.yaml
 
+.PHONY: tag
+tag:
+	@if [ -z "$(TAG)" ]; then \
+		echo "Usage: make tag TAG=vx.y.z"; \
+		exit 1; \
+	fi
+	git switch main && git pull
+	git tag -a $(TAG) -m "Release $(TAG)"
+	git push origin $(TAG)
+
 ##@ Deployment
 
 ifndef ignore-not-found

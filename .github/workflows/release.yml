@@ -23,6 +23,24 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Check commit status
+        run: |
+          checks=$(curl -s \
+            https://api.github.com/repos/bmarinov/garage-storage-controller/commits/a70becf78a6b386832f384b9ae2605f129af10a2/check-runs \
+            | jq -c '.check_runs[] | {name, conclusion}')
+
+          echo "$checks" | while read -r check; do
+              name=$(echo "$check" | jq -r .name)
+              conclusion=$(echo "$check" | jq -r .conclusion)
+              
+              if [ "$conclusion" != "success" ]; then
+                  echo "Failed build on ${{ github.sha }}"
+                  echo "'$name': '$conclusion'"
+                  echo "All runs: $checks"
+                  exit 1
+              fi
+          done
+
       - name: Log in to ghcr
         run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ${{ env.REGISTRY }} -u ${{ github.actor }} --password-stdin
 
@@ -34,6 +52,7 @@ jobs:
           else
             VERSION=$(git describe --tags --always --dirty)
           fi
+          echo "VERSION=${VERSION}" >> $GITHUB_OUTPUT
 
       - name: Build image
         run: make docker-build IMG=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.version.outputs.VERSION }}
