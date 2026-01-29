@@ -23,6 +23,7 @@ jobs:
         with:
           fetch-depth: 0
 
+      # This might be too agressive: once a build has failed a commit will never 'recover'
       - name: Check commit status
         run: |
           checks=$(curl -s \
