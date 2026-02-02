@@ -1,4 +1,3 @@
-# Adds namespace to all resources.
 namePrefix: garage-storage-controller-
 
 resources:

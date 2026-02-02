@@ -100,11 +100,16 @@ Creating and managing storage buckets through Kubernetes API resources should be
 
 ### Manifests
 
-TBD
+#### Custom resources
 
+Output CRD manifests to a file:
 ```sh
-kubectl apply foo/crds.yaml
-kubectl apply foo/bar.yaml
+kubectl kustomize ./config/crd -o crds.yaml
+```
+
+Or install directly in the cluster:
+```sh
+kubectl apply -k ./config/crd
 ```
 
 ### Helm
