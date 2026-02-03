@@ -111,21 +111,21 @@ Examples can be found in `config/env`:
 
 ### Full manifest
 
-Render the default kustomization to a file:
+Render all manifests to a file:
 ```sh
-kubectl kustomize ./config/default/ > dist/install.yaml
+kubectl kustomize ./config/install/full > dist/install.yaml
 ```
 
 ### Custom resources
 
 Output CRD manifests to a file:
 ```sh
-kubectl kustomize ./config/crd -o crds.yaml
+kubectl kustomize ./config/install/crds -o crds.yaml
 ```
 
 Or install directly in the cluster:
 ```sh
-kubectl apply -k ./config/crd
+kubectl apply -k ./config/install/crds
 ```
 
 ### RBAC
@@ -133,7 +133,7 @@ kubectl apply -k ./config/crd
 #### Cluster Role
 
 ```sh
-kubectl kustomize ./config/rbac -o rbac.yaml
+kubectl kustomize ./config/install/rbac -o rbac.yaml
 ```
 
 #### Namespaces / tenant roles
@@ -150,7 +150,10 @@ It is not recommended, but you can also provide cluster-wide access to configmap
 
 ### Deployment
 
-TODO
+The controller kustomization includes an exampel deployment manifest:
+```sh
+kubectl kustomize ./config/install/controller -o deployment.yaml
+```
 
 ## Install with Helm
 
