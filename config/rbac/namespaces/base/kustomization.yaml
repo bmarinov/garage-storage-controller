@@ -3,3 +3,4 @@ kind: Kustomization
 
 resources:
   - role_namespace_access.yaml
+  - role_binding.yaml

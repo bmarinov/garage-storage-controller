@@ -4,4 +4,9 @@ resources:
 - ../crd
 - ../rbac
 - ../manager
-- ../garage
+- ../env
+
+images:
+  - name: controller
+    newName: ghcr.io/bmarinov/garage-storage-controller
+    newTag: latest

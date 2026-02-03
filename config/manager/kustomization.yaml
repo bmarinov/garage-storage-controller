@@ -2,37 +2,11 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 namespace: garage-storage-controller-system
 resources:
+- namespace.yaml
 - manager.yaml
 - metrics_service.yaml
-images:
-- name: controller
-  newName: garage.getclustered.net/garage-storage-controller
-  newTag: v0.0.1
+
 patches:
-- patch: |-
-    - op: add
-      path: /spec/template/spec/containers/0/env/-
-      value:
-        name: GARAGE_API_ENDPOINT
-        value: http://garage-storage-controller-garage-0.garage-storage-controller-svc.garage-system.svc.cluster.local:3903
-    - op: add
-      path: /spec/template/spec/containers/0/env/-
-      value:
-        name: GARAGE_API_TOKEN
-        valueFrom:
-          secretKeyRef:
-            name: garage-api-token
-            key: api-token
-    - op: add
-      path: /spec/template/spec/containers/0/env/-
-      value:
-        name: GARAGE_S3_API_ENDPOINT
-        value: "https://s3.api.foo.net"
-  target:
-    group: apps
-    kind: Deployment
-    name: controller-manager
-    version: v1
 - path: manager_metrics_patch.yaml
   target:
     kind: Deployment

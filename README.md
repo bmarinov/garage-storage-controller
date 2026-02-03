@@ -92,13 +92,29 @@ Creating and managing storage buckets through Kubernetes API resources should be
 
 ### Configuration
 
+The controller expects the following configuration to be available as environment variables.
+
 | Env variable            | Description                                                    |
 | ------------------------| -------------------------------------------------------------- |
 | GARAGE_API_ENDPOINT     | Endpoint address of the Garage admin API.                      |
 | GARAGE_API_TOKEN        | API key used to authenticate requests to the Garage admin API. |
 | GARAGE_S3_API_ENDPOINT  | Endpoint address of the S3 client API provided to workloads.   |
 
-### Manifests
+Create a configmap and a secret in the controller namespace and reference them in the deployment manifest.
+
+Examples can be found in `config/env`:
+- [kustomization.yaml](config/env/kustomization.yaml) contains env var patches for the deployment.
+- [configmap.yaml](config/env/configmap.yaml) - configmap with keys for the endpoint addresses.
+- [secret.yaml](config/env/api_secret.yaml) - details on creating a valid secret.
+
+### Manual installation
+
+#### Full manifest
+
+Render the default kustomization to a file:
+```sh
+kubectl kustomize ./config/default/ > dist/install.yaml
+```
 
 #### Custom resources
 
@@ -112,9 +128,33 @@ Or install directly in the cluster:
 kubectl apply -k ./config/crd
 ```
 
+#### RBAC
+
+##### Cluster Role
+
+```sh
+kubectl kustomize ./config/rbac -o rbac.yaml
+```
+
+##### Namespaces / tenant roles
+
+Managing resources in a given namespace requires permissions over Secrets and ConfigMap resources.
+
+Example with the included default namespace overlay:
+```sh
+kubectl kustomize ./config/rbac/namespaces/default -o default-ns-access.yaml
+```
+
+This will create a role and a role binding in one specific namespace.  
+It is not recommended, but you can also provide cluster-wide access to configmaps and secrets. 
+
+#### Deployment
+
+TODO
+
 ### Helm
 
-TBD
+TODO
 
 ## Permissions model and security
 
@@ -138,7 +178,7 @@ Grant access and enroll a namespace (example):
 kubectl apply -k "config/rbac/namespaces/${namespace}"
 ```
 
-See [config/rbac/base/role_namespace_access.yaml](config/rbac/base/role_namespace_access.yaml) for the Role definition.
+See [config/rbac/base/role_namespace_access.yaml](config/rbac/namespaces/base/role_namespace_access.yaml) for the Role definition.
 
 **Note**: The controller does not need cluster-wide access to ConfigMaps or Secrets. Use namespace roles.
 

@@ -1,0 +1,8 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: garage-controller-config
+data:
+  # example values, these must match the Garage deployment:
+  garage_api_endpoint: "http://garage-svc.garage-system.svc.cluster.local:3903"
+  garage_s3_api_endpoint: "https://s3.local"
