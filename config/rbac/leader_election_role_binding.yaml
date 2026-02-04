@@ -1,15 +1,15 @@
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
+  name: garage-controller-leader-election
   labels:
     app.kubernetes.io/name: garage-storage-controller
     app.kubernetes.io/managed-by: kustomize
-  name: leader-election-rolebinding
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: Role
-  name: leader-election-role
+  name: garage-controller-leader-election
 subjects:
 - kind: ServiceAccount
-  name: controller-manager
-  namespace: system
+  name: garage-controller
+  namespace: garage-controller-system

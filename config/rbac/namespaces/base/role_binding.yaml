@@ -9,5 +9,5 @@ roleRef:
   name: garage-controller-namespace-access
 subjects:
 - kind: ServiceAccount
-  name: controller-manager
-  namespace: garage-storage-controller-system
+  name: garage-controller
+  namespace: garage-controller-system

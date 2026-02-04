@@ -150,7 +150,7 @@ It is not recommended, but you can also provide cluster-wide access to configmap
 
 ### Deployment
 
-The controller kustomization includes an exampel deployment manifest:
+The controller kustomization includes an example deployment manifest:
 ```sh
 kubectl kustomize ./config/install/controller -o deployment.yaml
 ```

@@ -52,7 +52,7 @@ var wellKnown = struct {
 }
 
 // namespace where the project is deployed in
-const namespace = "garage-storage-controller-system"
+const namespace = "garage-controller-system"
 
 // serviceAccountName created for the project
 const serviceAccountName = "garage-storage-controller-controller-manager"
@@ -125,7 +125,7 @@ var _ = Describe("Manager", Ordered, func() {
 		Expect(err).NotTo(HaveOccurred(), "Failed to deploy the garage controller")
 
 		By("waiting for Garage startup")
-		garagePod := "garage-storage-controller-garage-0"
+		garagePod := "garage-0"
 		Eventually(func() error {
 			cmd := exec.Command("kubectl", "wait",
 				"--for=condition=ready",
@@ -229,7 +229,7 @@ var _ = Describe("Manager", Ordered, func() {
 	SetDefaultEventuallyTimeout(2 * time.Minute)
 	SetDefaultEventuallyPollingInterval(time.Second)
 
-	Context("Manager", func() {
+	Context("Controller", func() {
 		It("should run successfully", func() {
 			By("validating that the controller-manager pod is running as expected")
 			verifyControllerUp := func(g Gomega) {
@@ -248,7 +248,7 @@ var _ = Describe("Manager", Ordered, func() {
 				podNames := utils.GetNonEmptyLines(podOutput)
 				g.Expect(podNames).To(HaveLen(1), "expected 1 controller pod running")
 				controllerPodName = podNames[0]
-				g.Expect(controllerPodName).To(ContainSubstring("controller-manager"))
+				g.Expect(controllerPodName).To(ContainSubstring("garage-controller"))
 
 				// Validate the pod's status
 				cmd = exec.Command("kubectl", "get",
@@ -257,7 +257,7 @@ var _ = Describe("Manager", Ordered, func() {
 				)
 				output, err := utils.Run(cmd)
 				g.Expect(err).NotTo(HaveOccurred())
-				g.Expect(output).To(Equal("Running"), "Incorrect controller-manager pod status")
+				g.Expect(output).To(Equal("Running"), "Incorrect controller pod status")
 			}
 			Eventually(verifyControllerUp).Should(Succeed())
 		})

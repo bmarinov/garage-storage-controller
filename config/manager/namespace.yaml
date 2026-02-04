@@ -5,4 +5,4 @@ metadata:
     control-plane: controller-manager
     app.kubernetes.io/name: garage-storage-controller
     app.kubernetes.io/managed-by: kustomize
-  name: system
+  name: garage-controller-system

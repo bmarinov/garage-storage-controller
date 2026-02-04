@@ -1,8 +1,6 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
-namePrefix: garage-storage-controller-
-
 resources:
   - ../../crd
   - ../../rbac
@@ -11,9 +9,10 @@ resources:
   - ../../garage
 
 images:
-- name: controller
-  newName: garage.getclustered.net/garage-storage-controller
-  newTag: v0.0.1
+  - name: controller
+    # image configuration for e2e build (see e2e_suite_test.go):
+    newName: garage.getclustered.net/garage-storage-controller
+    newTag: v0.0.1
 
 patches:
   - patch: |-
@@ -21,7 +20,7 @@ patches:
         path: /spec/template/spec/containers/0/env/-
         value:
           name: GARAGE_API_ENDPOINT
-          value: http://garage-storage-controller-garage-0.garage-storage-controller-svc.garage-system.svc.cluster.local:3903
+          value: http://garage-0.garage.garage-system.svc.cluster.local:3903
       - op: add
         path: /spec/template/spec/containers/0/env/-
         value:
@@ -39,4 +38,4 @@ patches:
       group: apps
       version: v1
       kind: Deployment
-      name: controller-manager
+      name: garage-controller
