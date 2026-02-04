@@ -109,13 +109,6 @@ Examples can be found in `config/env`:
 
 ## Manual installation
 
-### Full manifest
-
-Render all manifests to a file:
-```sh
-kubectl kustomize ./config/install/full > dist/install.yaml
-```
-
 ### Custom resources
 
 Output CRD manifests to a file:
@@ -130,13 +123,18 @@ kubectl apply -k ./config/install/crds
 
 ### RBAC
 
-#### Cluster Role
+#### Controller Role and ServiceAccount
 
 ```sh
 kubectl kustomize ./config/install/rbac -o rbac.yaml
 ```
 
-#### Namespaces / tenant roles
+This customization creates:
+- the controller namespace and a service account
+- cluster roles for CRDs
+- leader election roles
+
+#### Namespaced / tenant roles
 
 Managing resources in a given namespace requires permissions over Secrets and ConfigMap resources.
 
@@ -154,6 +152,17 @@ The controller kustomization includes an example deployment manifest:
 ```sh
 kubectl kustomize ./config/install/controller -o deployment.yaml
 ```
+
+The deployment will remain in status `CreateContainerConfigError` until the expected ConfigMap and Secret are created. See [Configuration](#configuration) for more details and an example.
+
+
+### Full manifest
+
+Manifests can also be rendered to a single file:
+```sh
+kubectl kustomize ./config/install/full > dist/install.yaml
+```
+
 
 ## Install with Helm
 

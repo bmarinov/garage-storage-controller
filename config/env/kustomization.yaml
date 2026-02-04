@@ -5,3 +5,4 @@ namespace: garage-controller-system
 
 resources:
   - configmap.yaml
+  - api_secret.yaml

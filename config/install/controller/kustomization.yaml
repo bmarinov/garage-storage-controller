@@ -5,7 +5,6 @@ namespace: garage-controller-system
 
 resources:
 - ../../manager
-- ../../env
 
 images:
   - name: controller
