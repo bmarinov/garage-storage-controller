@@ -2,10 +2,10 @@
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
+  name: garage-controller-leader-election
   labels:
     app.kubernetes.io/name: garage-storage-controller
     app.kubernetes.io/managed-by: kustomize
-  name: leader-election-role
 rules:
 - apiGroups:
   - ""

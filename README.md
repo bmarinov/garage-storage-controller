@@ -1,11 +1,11 @@
 Storage controller for Garage (S3-compatible) clusters.
 ---
 [![codecov](https://codecov.io/github/bmarinov/garage-storage-controller/graph/badge.svg?token=NNYZQ863ZE)](https://codecov.io/github/bmarinov/garage-storage-controller)
-## Overview
+# Overview
 
 __garage-storage-controller__ handles bucket and access key management for [Garage](https://garagehq.deuxfleurs.fr/) storage clusters. 
 
-### Project status
+## Project status
 
 This project is in alpha and should be considered a technical preview. Core functionality is present, but some edge cases and common errors are not yet handled.
 
@@ -16,7 +16,7 @@ CRDs are still alpha, following is subject to change:
 
 API will stabilize as soon as the project hits beta state.
 
-### Quick start
+## Quick start
 
 ```yaml
 apiVersion: garage.getclustered.net/v1alpha1
@@ -73,12 +73,12 @@ data:
   secret-access-key: "..."
 ```
 
-### CRDs
+## CRDs
 - `Bucket`: Creates S3 buckets on the Garage cluster
 - `AccessKey`: Generate credentials and store them as namespace secrets
 - `AccessPolicy`: Control which keys can access a bucket
 
-### Objectives and scope
+## Objectives and scope
 
 Creating and managing storage buckets through Kubernetes API resources should be simple:
 - Focus on the common use cases
@@ -88,9 +88,11 @@ Creating and managing storage buckets through Kubernetes API resources should be
 **Note:** Deleting `Bucket` API resources will never remove the actual buckets on the storage backend. Data loss is not boring. And we aim for boring here.
 
 
-## Install
+# Install
 
-### Configuration
+## Configuration
+
+The controller expects the following configuration to be available as environment variables.
 
 | Env variable            | Description                                                    |
 | ------------------------| -------------------------------------------------------------- |
@@ -98,24 +100,79 @@ Creating and managing storage buckets through Kubernetes API resources should be
 | GARAGE_API_TOKEN        | API key used to authenticate requests to the Garage admin API. |
 | GARAGE_S3_API_ENDPOINT  | Endpoint address of the S3 client API provided to workloads.   |
 
-### Manifests
+Create a configmap and a secret in the controller namespace and reference them in the deployment manifest.
 
-TBD
+Examples can be found in `config/env`:
+- [kustomization.yaml](config/env/kustomization.yaml) contains env var patches for the deployment.
+- [configmap.yaml](config/env/configmap.yaml) - configmap with keys for the endpoint addresses.
+- [secret.yaml](config/env/api_secret.yaml) - details on creating a valid secret.
 
+## Manual installation
+
+### Custom resources
+
+Output CRD manifests to a file:
 ```sh
-kubectl apply foo/crds.yaml
-kubectl apply foo/bar.yaml
+kubectl kustomize ./config/install/crds -o crds.yaml
 ```
 
-### Helm
+Or install directly in the cluster:
+```sh
+kubectl apply -k ./config/install/crds
+```
 
-TBD
+### RBAC
 
-## Permissions model and security
+#### Controller Role and ServiceAccount
+
+```sh
+kubectl kustomize ./config/install/rbac -o rbac.yaml
+```
+
+This customization creates:
+- the controller namespace and a service account
+- cluster roles for CRDs
+- leader election roles
+
+#### Namespaced / tenant roles
+
+Managing resources in a given namespace requires permissions over Secrets and ConfigMap resources.
+
+Example with the included default namespace overlay:
+```sh
+kubectl kustomize ./config/rbac/namespaces/default -o default-ns-access.yaml
+```
+
+This will create a role and a role binding in one specific namespace.  
+It is not recommended, but you can also provide cluster-wide access to configmaps and secrets. 
+
+### Deployment
+
+The controller kustomization includes an example deployment manifest:
+```sh
+kubectl kustomize ./config/install/controller -o deployment.yaml
+```
+
+The deployment will remain in status `CreateContainerConfigError` until the expected ConfigMap and Secret are created. See [Configuration](#configuration) for more details and an example.
+
+
+### Full manifest
+
+Manifests can also be rendered to a single file:
+```sh
+kubectl kustomize ./config/install/full > dist/install.yaml
+```
+
+
+## Install with Helm
+
+TODO
+
+# Permissions model and security
 
 The controller needs cluster-level permissions for its CRDs. ConfigMap and Secret access can be restricted to specific namespaces.
 
-### CRDs
+## CRDs
 
 The controller manages the following custom resources in the `garage.getclustered.net` group:
 - `accesskeys`
@@ -124,7 +181,7 @@ The controller manages the following custom resources in the `garage.getclustere
 
 See [config/rbac/role.yaml](config/rbac/role.yaml) for the ClusterRole definition.
 
-### ConfigMaps and Secrets
+## ConfigMaps and Secrets
 
 The controller stores bucket connection details in ConfigMaps and S3 credentials in Secrets. These resources are created in the same namespace as the Bucket and AccessKey resources.
 
@@ -133,20 +190,20 @@ Grant access and enroll a namespace (example):
 kubectl apply -k "config/rbac/namespaces/${namespace}"
 ```
 
-See [config/rbac/base/role_namespace_access.yaml](config/rbac/base/role_namespace_access.yaml) for the Role definition.
+See [config/rbac/base/role_namespace_access.yaml](config/rbac/namespaces/base/role_namespace_access.yaml) for the Role definition.
 
 **Note**: The controller does not need cluster-wide access to ConfigMaps or Secrets. Use namespace roles.
 
-## Development
+# Development
 
-### Project setup
+## Project setup
 
 Scaffolding done with kubebuilder. See [docs](https://book.kubebuilder.io/reference/reference) for more info.
 
 
-### Running tests
+## Running tests
 
-#### E2E
+### E2E
 
 Run suite with `make test-e2e`. Requires Kind to be installed and available.:
 
@@ -160,10 +217,9 @@ sudo mv ./kind /usr/local/bin/kind
 - Or latest from Homebrew: `brew install kind`
 
 
+## Debugging
 
-### Debugging
-
-#### E2E Tests
+### E2E Tests
 
 Setup environment with `make setup-test-e2e` and launch tests in e2e packge.
 

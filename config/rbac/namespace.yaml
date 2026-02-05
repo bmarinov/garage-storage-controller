@@ -1,8 +1,8 @@
 apiVersion: v1
-kind: ServiceAccount
+kind: Namespace
 metadata:
-  name: garage-controller
-  namespace: garage-controller-system
+  name: garage-controller-system
   labels:
+    control-plane: controller-manager
     app.kubernetes.io/name: garage-storage-controller
     app.kubernetes.io/managed-by: kustomize
