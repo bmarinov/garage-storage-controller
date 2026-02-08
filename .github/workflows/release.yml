@@ -6,10 +6,6 @@ on:
       - "v*"
   workflow_dispatch: {}
 
-permissions:
-  contents: write
-  actions: write
-
 jobs:
   build-release:
     runs-on: ubuntu-latest
@@ -19,7 +15,7 @@ jobs:
       IMAGE_NAME: ${{ github.repository }}
 
     permissions:
-      contents: read
+      contents: write
       packages: write
 
     steps:
