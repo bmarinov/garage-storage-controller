@@ -61,8 +61,29 @@ jobs:
         run: make docker-push IMG=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.version.outputs.VERSION }}
 
       - name: Tag and push latest
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: github.ref_type == 'tag'
         run: |
           docker tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.version.outputs.VERSION }} \
                      ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
           make docker-push IMG=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+
+      - name: Package CRDs
+        if: github.ref_type == 'tag'
+        run: kubectl kustomize ./config/install/crds -o crds-${{ steps.version.outputs.VERSION }}.yaml
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        if: github.ref_type == 'tag'
+        with:
+          draft: true
+          generate_release_notes: true
+          files: |
+            crds-${{ steps.version.outputs.VERSION }}.yaml
+          body: |
+
+            Controller image: `${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.version.outputs.VERSION }}`
+
+            ## Changes
+
+            <!-- Changes since last release -->
+
