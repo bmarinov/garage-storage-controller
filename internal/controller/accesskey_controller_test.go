@@ -73,8 +73,7 @@ var _ = Describe("AccessKey Controller", func() {
 						Namespace: "default",
 					},
 					Spec: garagev1alpha1.AccessKeySpec{
-						SecretName:   "some-ns-secret",
-						NeverExpires: true,
+						SecretName: "some-ns-secret",
 					},
 				}
 				Expect(k8sClient.Create(ctx, resource)).To(Succeed())

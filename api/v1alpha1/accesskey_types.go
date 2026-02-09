@@ -25,14 +25,6 @@ type AccessKeySpec struct {
 	// The name of the secret that will be created to store the credentials.
 	// +kubebuilder:validation:Required
 	SecretName string `json:"secretName"`
-
-	// NeverExpires is an experimental (draft) field. Set the access key to never expire.
-	// +optional
-	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="Value is immutable"
-	NeverExpires bool `json:"neverExpires,omitempty"`
-
-	// TODO: TBD: viability without credential rotation?
-	// Expiration time.Time
 }
 
 // AccessKeyStatus defines the observed state of AccessKey.
