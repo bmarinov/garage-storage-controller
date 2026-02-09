@@ -8,6 +8,8 @@ html_report="coverage.html"
 mapfile -t packages < <(
     go list ./... \
         | grep -v /e2e \
+        | grep -v /internal/garage/integrationtests \
+        | grep -v /internal/tests \
         | grep -v /api/v1alpha1
 )
 coverpkg=$(IFS=, ; echo "${packages[*]}")
