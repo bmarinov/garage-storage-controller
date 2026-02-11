@@ -43,6 +43,11 @@ spec:
           spec:
             description: spec defines the desired state of Bucket
             properties:
+              configMapName:
+                description: |-
+                  The name of the ConfigMap that will be created to store bucket connection details.
+                  If not set, defaults to the Bucket resource name.
+                type: string
               maxObjects:
                 description: MaxObjects is the number of objects the bucket can store.
                 format: int64
