@@ -54,7 +54,7 @@ type BucketClient interface {
 
 // BucketReconciler reconciles a Bucket object
 type BucketReconciler struct {
-	client.Client
+	client        client.Client
 	Scheme        *runtime.Scheme
 	bucket        BucketClient
 	s3APIEndpoint string
@@ -67,7 +67,7 @@ func NewBucketReconciler(
 	s3APIEndpoint string,
 ) *BucketReconciler {
 	return &BucketReconciler{
-		Client:        apiClient,
+		client:        apiClient,
 		Scheme:        scheme,
 		bucket:        s3Client,
 		s3APIEndpoint: s3APIEndpoint,
@@ -89,7 +89,7 @@ func (r *BucketReconciler) SetupWithManager(mgr ctrl.Manager) error {
 func (r *BucketReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	bucket := garagev1alpha1.Bucket{}
 
-	err := r.Get(ctx, req.NamespacedName, &bucket)
+	err := r.client.Get(ctx, req.NamespacedName, &bucket)
 	if err != nil {
 		if apierrors.IsNotFound(err) {
 			return ctrl.Result{}, nil
@@ -105,7 +105,7 @@ func (r *BucketReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 	updateBucketReadyCondition(&bucket)
 
 	if !equality.Semantic.DeepEqual(*orig, bucket.Status) {
-		patchErr := r.Status().Patch(ctx, &bucket, client.Merge, client.FieldOwner(bucketControllerName))
+		patchErr := r.client.Status().Patch(ctx, &bucket, client.Merge, client.FieldOwner(bucketControllerName))
 
 		if err == nil && patchErr != nil {
 			return ctrl.Result{}, patchErr
@@ -116,7 +116,7 @@ func (r *BucketReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 }
 
 func (r *BucketReconciler) reconcileBucket(ctx context.Context, bucket *garagev1alpha1.Bucket) error {
-	alias := suffixedResourceName(bucket.ObjectMeta)
+	alias := suffixedResourceName(bucket.Spec.Name, bucket.ObjectMeta)
 	s3Bucket, err := r.bucket.Get(ctx, alias)
 	if err != nil {
 		if errors.Is(err, s3.ErrResourceNotFound) {
@@ -206,7 +206,7 @@ func (r *BucketReconciler) ensureConfigMap(ctx context.Context,
 		},
 	}
 
-	opResult, err := controllerutil.CreateOrUpdate(ctx, r.Client, &cm, func() error {
+	opResult, err := controllerutil.CreateOrUpdate(ctx, r.client, &cm, func() error {
 		if cm.UID != "" {
 			// configmap already exists, check owner:
 			if !metav1.IsControlledBy(&cm, bucket) {
@@ -241,7 +241,7 @@ func (r *BucketReconciler) ensureConfigMap(ctx context.Context,
 
 func (r *BucketReconciler) deleteStaleConfigMap(ctx context.Context, bucket garagev1alpha1.Bucket) error {
 	var configMaps corev1.ConfigMapList
-	err := r.Client.List(ctx, &configMaps,
+	err := r.client.List(ctx, &configMaps,
 		client.InNamespace(bucket.Namespace),
 		client.MatchingLabels{
 			labelBucketName: bucket.Name,
@@ -258,7 +258,7 @@ func (r *BucketReconciler) deleteStaleConfigMap(ctx context.Context, bucket gara
 	}
 	for _, cm := range configMaps.Items {
 		if cm.Name != desiredName && metav1.IsControlledBy(&cm, &bucket) {
-			err = r.Client.Delete(ctx, &cm)
+			err = r.client.Delete(ctx, &cm)
 			if err != nil && !apierrors.IsNotFound(err) {
 				return fmt.Errorf("deleting stale configmap %s: %w", cm.Name, err)
 			}
@@ -276,8 +276,8 @@ func compareSpec(bucket s3.Bucket, spec garagev1alpha1.BucketSpec) bool {
 	return false
 }
 
-// suffixedResourceName adds a suffix based on the resource UID.
-func suffixedResourceName(meta metav1.ObjectMeta) string {
+// suffixedResourceName extends a name with a suffix based on the resource UID.
+func suffixedResourceName(name string, meta metav1.ObjectMeta) string {
 	hash := sha256.Sum256([]byte(meta.UID))
-	return fmt.Sprintf("%s-%x", meta.Name, hash[:8])
+	return fmt.Sprintf("%s-%x", name, hash[:8])
 }

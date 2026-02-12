@@ -242,7 +242,7 @@ var _ = Describe("Bucket Controller", func() {
 			By("simulating reconcile error after external bucket creation")
 			existing := s3.Bucket{
 				ID:            "3f5z",
-				GlobalAliases: []string{suffixedResourceName(bucket.ObjectMeta)},
+				GlobalAliases: []string{suffixedResourceName(bucket.Spec.Name, bucket.ObjectMeta)},
 			}
 			s3API.buckets[existing.ID] = existing
 
