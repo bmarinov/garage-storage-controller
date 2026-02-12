@@ -55,8 +55,6 @@ var _ = Describe("Bucket Controller", func() {
 	Context("When creating a new bucket", func() {
 		It("should create external S3 bucket matching spec", func() {
 			By("creating a Bucket custom resource")
-			bucketName := "foo-storage"
-
 			bucket := newBucket(namespace)
 			bucket.Spec.MaxSize = resource.MustParse("365Mi")
 			bucket.Spec.MaxObjects = 9005
@@ -73,9 +71,8 @@ var _ = Describe("Bucket Controller", func() {
 			Expect(err).ShouldNot(HaveOccurred())
 
 			By("waiting for external bucket to be provisioned")
-			var reconciled garagev1alpha1.Bucket
 			Eventually(func(g Gomega) {
-				g.Expect(k8sClient.Get(ctx, namespacedName(bucket.ObjectMeta), &reconciled)).To(Succeed())
+				g.Expect(k8sClient.Get(ctx, namespacedName(bucket.ObjectMeta), &bucket)).To(Succeed())
 				g.Expect(checkCondition(bucket.Status.Conditions, Ready, metav1.ConditionTrue)).To(Succeed())
 				bucketCond := meta.FindStatusCondition(bucket.Status.Conditions, Ready)
 				g.Expect(bucketCond.ObservedGeneration).To(Equal(bucket.Generation))
@@ -83,7 +80,7 @@ var _ = Describe("Bucket Controller", func() {
 
 			By("retrieving bucket with suffixed name")
 			hash := sha256.Sum256([]byte(bucket.UID))
-			expectedName := fmt.Sprintf("%s-%x", bucketName, hash[:8])
+			expectedName := fmt.Sprintf("%s-%x", bucket.Spec.Name, hash[:8])
 			created, err := s3Fake.Get(ctx, expectedName)
 			Expect(err).ToNot(HaveOccurred(), "bucket should exist: %s", expectedName)
 
@@ -100,8 +97,8 @@ var _ = Describe("Bucket Controller", func() {
 					types.NamespacedName{Namespace: namespace, Name: expectedCMName},
 					&configmap)).To(Succeed())
 
-				g.Expect(configmap.Data[ConfigMapKeyBucketName]).To(Equal(bucket.Status.BucketName))
-				g.Expect(configmap.Data[ConfigMapKeyEndpoint]).To(Equal(s3Endpoint))
+				g.Expect(configmap.Data[configMapKeyBucketName]).To(Equal(bucket.Status.BucketName))
+				g.Expect(configmap.Data[configMapKeyEndpoint]).To(Equal(s3Endpoint))
 			}).Should(Succeed())
 		})
 
@@ -126,11 +123,11 @@ var _ = Describe("Bucket Controller", func() {
 			Expect(k8sClient.Get(ctx, types.NamespacedName{Namespace: resource.Namespace, Name: expectedCMName}, &configmap)).
 				To(Succeed())
 
-			Expect(configmap.Data).To(HaveKey(ConfigMapKeyEndpoint))
-			Expect(configmap.Data).To(HaveKey(ConfigMapKeyBucketName))
+			Expect(configmap.Data).To(HaveKey(configMapKeyEndpoint))
+			Expect(configmap.Data).To(HaveKey(configMapKeyBucketName))
 
-			Expect(configmap.Data[ConfigMapKeyEndpoint]).To(Equal(s3API))
-			Expect(configmap.Data[ConfigMapKeyBucketName]).To(Equal(resource.Status.BucketName))
+			Expect(configmap.Data[configMapKeyEndpoint]).To(Equal(s3API))
+			Expect(configmap.Data[configMapKeyBucketName]).To(Equal(resource.Status.BucketName))
 		})
 
 		It("creates cm with name from spec", func() {
@@ -152,7 +149,7 @@ var _ = Describe("Bucket Controller", func() {
 			Expect(cm.Name).To(Equal(resource.Spec.ConfigMapName))
 		})
 
-		FIt("handles configmap rename in Bucket spec", func() {
+		It("handles configmap rename in Bucket spec", func() {
 			bucket := newBucket(namespace)
 			bucket.Spec.ConfigMapName = "blappers-config"
 			Expect(k8sClient.Create(ctx, &bucket)).To(Succeed())

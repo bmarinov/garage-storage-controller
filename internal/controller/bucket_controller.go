@@ -41,8 +41,9 @@ const (
 )
 
 const (
-	ConfigMapKeyBucketName = "bucket-name"
-	ConfigMapKeyEndpoint   = "s3-endpoint"
+	configMapKeyBucketName = "bucket-name"
+	configMapKeyEndpoint   = "s3-endpoint"
+	labelBucketName        = "garage.getclustered.net/bucket"
 )
 
 type BucketClient interface {
@@ -183,7 +184,8 @@ func (r *BucketReconciler) reconcileBucket(ctx context.Context, bucket *garagev1
 		updateBucketCMCondition(bucket, metav1.ConditionTrue,
 			"ConfigMapReady", "ConfigMap with external bucket details is ready")
 	}
-	return nil
+
+	return r.deleteStaleConfigMap(ctx, *bucket)
 }
 
 // ensureConfigMap creates a new configmap for the bucket or updates the values in an existing one.
@@ -218,9 +220,13 @@ func (r *BucketReconciler) ensureConfigMap(ctx context.Context,
 		if err != nil {
 			return err
 		}
+		if cm.Labels == nil {
+			cm.Labels = make(map[string]string)
+		}
+		cm.Labels[labelBucketName] = bucket.Name
 		cm.Data = map[string]string{
-			ConfigMapKeyBucketName: bucket.Status.BucketName,
-			ConfigMapKeyEndpoint:   endpoint,
+			configMapKeyBucketName: bucket.Status.BucketName,
+			configMapKeyEndpoint:   endpoint,
 		}
 		return nil
 	})
@@ -231,6 +237,34 @@ func (r *BucketReconciler) ensureConfigMap(ctx context.Context,
 	}
 
 	return err
+}
+
+func (r *BucketReconciler) deleteStaleConfigMap(ctx context.Context, bucket garagev1alpha1.Bucket) error {
+	var configMaps corev1.ConfigMapList
+	err := r.Client.List(ctx, &configMaps,
+		client.InNamespace(bucket.Namespace),
+		client.MatchingLabels{
+			labelBucketName: bucket.Name,
+		})
+	if err != nil {
+		return fmt.Errorf("retrieving ConfigMaps by Bucket label: %w", err)
+	}
+
+	var desiredName string
+	if bucket.Spec.ConfigMapName != "" {
+		desiredName = bucket.Spec.ConfigMapName
+	} else {
+		desiredName = bucket.Name
+	}
+	for _, cm := range configMaps.Items {
+		if cm.Name != desiredName && metav1.IsControlledBy(&cm, &bucket) {
+			err = r.Client.Delete(ctx, &cm)
+			if err != nil && !apierrors.IsNotFound(err) {
+				return fmt.Errorf("deleting stale configmap %s: %w", cm.Name, err)
+			}
+		}
+	}
+	return nil
 }
 
 func compareSpec(bucket s3.Bucket, spec garagev1alpha1.BucketSpec) bool {
