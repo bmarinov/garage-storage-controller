@@ -191,9 +191,15 @@ func (r *BucketReconciler) ensureConfigMap(ctx context.Context,
 	bucket *garagev1alpha1.Bucket,
 	endpoint string,
 ) error {
+	var cmName string
+	if bucket.Spec.ConfigMapName == "" {
+		cmName = bucket.Name
+	} else {
+		cmName = bucket.Spec.ConfigMapName
+	}
 	cm := corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      bucket.Name,
+			Name:      cmName,
 			Namespace: bucket.Namespace,
 		},
 	}

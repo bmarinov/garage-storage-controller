@@ -56,34 +56,26 @@ var _ = Describe("Bucket Controller", func() {
 		It("should create external S3 bucket matching spec", func() {
 			By("creating a Bucket custom resource")
 			bucketName := "foo-storage"
-			objID := types.NamespacedName{Namespace: namespace, Name: bucketName}
 
-			resource := garagev1alpha1.Bucket{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      objID.Name,
-					Namespace: objID.Namespace,
-				},
-				Spec: garagev1alpha1.BucketSpec{
-					Name:       bucketName,
-					MaxSize:    resource.MustParse("365Mi"),
-					MaxObjects: 9005,
-				},
-			}
+			bucket := newBucket(namespace)
+			bucket.Spec.MaxSize = resource.MustParse("365Mi")
+			bucket.Spec.MaxObjects = 9005
 			expectedSizeBytes := int64(365 * 1024 * 1024)
-			Expect(k8sClient.Create(ctx, &resource)).To(Succeed())
+			Expect(k8sClient.Create(ctx, &bucket)).To(Succeed())
 
 			By("reconciling")
 			var s3Fake = newS3APIFake()
 			s3Endpoint := "https://foo.bar:3456/baz"
 			controllerReconciler := NewBucketReconciler(k8sClient, k8sClient.Scheme(), s3Fake, s3Endpoint)
 
-			_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{NamespacedName: objID})
+			_, err := controllerReconciler.Reconcile(ctx,
+				reconcile.Request{NamespacedName: namespacedName(bucket.ObjectMeta)})
 			Expect(err).ShouldNot(HaveOccurred())
 
 			By("waiting for external bucket to be provisioned")
-			var bucket garagev1alpha1.Bucket
+			var reconciled garagev1alpha1.Bucket
 			Eventually(func(g Gomega) {
-				g.Expect(k8sClient.Get(ctx, objID, &bucket)).To(Succeed())
+				g.Expect(k8sClient.Get(ctx, namespacedName(bucket.ObjectMeta), &reconciled)).To(Succeed())
 				g.Expect(checkCondition(bucket.Status.Conditions, Ready, metav1.ConditionTrue)).To(Succeed())
 				bucketCond := meta.FindStatusCondition(bucket.Status.Conditions, Ready)
 				g.Expect(bucketCond.ObservedGeneration).To(Equal(bucket.Generation))
@@ -96,8 +88,8 @@ var _ = Describe("Bucket Controller", func() {
 			Expect(err).ToNot(HaveOccurred(), "bucket should exist: %s", expectedName)
 
 			By("comparing the bucket config with spec")
-			Expect(created.Quotas.MaxObjects).To(Equal(resource.Spec.MaxObjects))
-			Expect(created.Quotas.MaxSize).To(Equal(resource.Spec.MaxSize.Value()))
+			Expect(created.Quotas.MaxObjects).To(Equal(bucket.Spec.MaxObjects))
+			Expect(created.Quotas.MaxSize).To(Equal(bucket.Spec.MaxSize.Value()))
 			Expect(created.Quotas.MaxSize).To(Equal(expectedSizeBytes))
 
 			By("creating a ConfigMap with bucket details")
@@ -115,15 +107,7 @@ var _ = Describe("Bucket Controller", func() {
 
 		It("should create ConfigMap with connection details", func() {
 			By("creating the bucket")
-			resource := garagev1alpha1.Bucket{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      fixture.RandAlpha(12),
-					Namespace: namespace,
-				},
-				Spec: garagev1alpha1.BucketSpec{
-					Name: "crate-with-crabs",
-				},
-			}
+			resource := newBucket(namespace)
 			Expect(k8sClient.Create(ctx, &resource)).To(Succeed())
 			var s3Fake = newS3APIFake()
 			s3API := "https://s3.test.fooz:3909"
@@ -149,16 +133,61 @@ var _ = Describe("Bucket Controller", func() {
 			Expect(configmap.Data[ConfigMapKeyBucketName]).To(Equal(resource.Status.BucketName))
 		})
 
+		It("creates cm with name from spec", func() {
+			By("creating bucket with configMapName set")
+			resource := newBucket(namespace)
+			resource.Spec.ConfigMapName = "bucket-config"
+			Expect(k8sClient.Create(ctx, &resource)).To(Succeed())
+
+			sut, _ := setupBucket()
+			Expect(sut.Reconcile(ctx, reconcile.Request{
+				NamespacedName: namespacedName(resource.ObjectMeta),
+			})).Error().ToNot(HaveOccurred())
+
+			By("verifying ConfigMap name equals spec")
+			var cm corev1.ConfigMap
+			Expect(k8sClient.Get(ctx,
+				types.NamespacedName{Name: resource.Spec.ConfigMapName, Namespace: namespace}, &cm)).
+				To(Succeed(), "should find bucket with configured name")
+			Expect(cm.Name).To(Equal(resource.Spec.ConfigMapName))
+		})
+
+		FIt("handles configmap rename in Bucket spec", func() {
+			bucket := newBucket(namespace)
+			bucket.Spec.ConfigMapName = "blappers-config"
+			Expect(k8sClient.Create(ctx, &bucket)).To(Succeed())
+
+			sut, _ := setupBucket()
+			By("reconciling with old CM name")
+			Expect(sut.Reconcile(ctx, reconcile.Request{
+				NamespacedName: namespacedName(bucket.ObjectMeta),
+			})).Error().ToNot(HaveOccurred())
+
+			var oldCM corev1.ConfigMap
+			Expect(k8sClient.Get(ctx, types.NamespacedName{Namespace: namespace,
+				Name: bucket.Spec.ConfigMapName}, &oldCM)).To(Succeed())
+
+			By("changing spec and reconciling")
+			_ = k8sClient.Get(ctx, namespacedName(bucket.ObjectMeta), &bucket)
+			newName := "foo-configuration"
+			bucket.Spec.ConfigMapName = newName
+			Expect(k8sClient.Update(ctx, &bucket)).To(Succeed())
+			_, _ = sut.Reconcile(ctx, reconcile.Request{NamespacedName: namespacedName(bucket.ObjectMeta)})
+
+			By("new bucket ConfigMap created")
+			var newCM corev1.ConfigMap
+			Expect(k8sClient.Get(ctx, types.NamespacedName{Namespace: namespace,
+				Name: newName}, &newCM)).Should(Succeed())
+			Expect(newCM.OwnerReferences).To(
+				ContainElement(HaveField("Name", bucket.Name)), "Bucket should own new CM")
+
+			By("ensuring old ConfigMap is deleted")
+			Expect(k8sClient.Get(ctx, namespacedName(oldCM.ObjectMeta), &oldCM)).Error().
+				To(Satisfy(apierrors.IsNotFound), "should fail fetching old CM")
+		})
+
 		It("sets correct condition and reason on ConfigMap name conflict", func() {
-			bucket := garagev1alpha1.Bucket{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      fixture.RandAlpha(12),
-					Namespace: namespace,
-				},
-				Spec: garagev1alpha1.BucketSpec{
-					Name: fixture.RandAlpha(8),
-				},
-			}
+			bucket := newBucket(namespace)
 			cmName := bucket.Name
 
 			By("ConfigMap with name already exists")
@@ -196,23 +225,19 @@ var _ = Describe("Bucket Controller", func() {
 			Expect(readyCondition.Status).To(Equal(metav1.ConditionFalse), "top-level Ready must be false")
 			Expect(readyCondition.Reason).To(Equal(ReasonConfigMapNameConflict), "should reflect underlying configuration conflict")
 		})
+
+		// It("recovers from conflict once configMapName is set", func() {
+
+		// })
+
 	})
 
 	Context("When reconciling existing buckets", func() {
 		It("should successfully reconcile for existing external resource", func() {
-			bucketName := fixture.RandAlpha(12)
-			bucket := &garagev1alpha1.Bucket{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      fixture.RandAlpha(8),
-					Namespace: namespace,
-				},
-				Spec: garagev1alpha1.BucketSpec{
-					Name: bucketName,
-				},
-			}
-			Expect(k8sClient.Create(ctx, bucket)).To(Succeed())
+			bucket := newBucket(namespace)
+			Expect(k8sClient.Create(ctx, &bucket)).To(Succeed())
 			DeferCleanup(func() {
-				_ = k8sClient.Delete(ctx, bucket)
+				_ = k8sClient.Delete(ctx, &bucket)
 			})
 
 			sut, s3API := setupBucket()
@@ -257,25 +282,17 @@ var _ = Describe("Bucket Controller", func() {
 			}).Should(Succeed())
 		})
 		It("should apply modifications to existing bucket", func() {
-			newBucket := &garagev1alpha1.Bucket{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      fixture.RandAlpha(12),
-					Namespace: namespace,
-				},
-				Spec: garagev1alpha1.BucketSpec{
-					Name: fixture.RandAlpha(12),
-				},
-			}
+			initial := newBucket(namespace)
 
-			Expect(k8sClient.Create(ctx, newBucket)).To(Succeed())
+			Expect(k8sClient.Create(ctx, &initial)).To(Succeed())
 			DeferCleanup(func() {
-				_ = k8sClient.Delete(ctx, newBucket)
+				_ = k8sClient.Delete(ctx, &initial)
 			})
 
 			sut, s3API := setupBucket()
 
 			By("reconciling")
-			objID := namespacedName(newBucket.ObjectMeta)
+			objID := namespacedName(initial.ObjectMeta)
 			_, _ = sut.Reconcile(ctx, reconcile.Request{NamespacedName: objID})
 
 			By("setting bucket quota")
@@ -296,15 +313,7 @@ var _ = Describe("Bucket Controller", func() {
 			Expect(quota.MaxObjects).To(Equal(bucket.Spec.MaxObjects))
 		})
 		It("recreates missing ConfigMap on reconcile", func() {
-			bucket := garagev1alpha1.Bucket{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      fixture.RandAlpha(11),
-					Namespace: namespace,
-				},
-				Spec: garagev1alpha1.BucketSpec{
-					Name: fixture.RandAlpha(8),
-				},
-			}
+			bucket := newBucket(namespace)
 			Expect(k8sClient.Create(ctx, &bucket)).To(Succeed())
 
 			By("reconciling initial create")
@@ -343,6 +352,7 @@ var _ = Describe("Bucket Controller", func() {
 
 	Context("When creating bucket API resources", func() {
 		DescribeTable("validates bucket names",
+			// TODO: is resource name or spec.Name being validated here? Both?
 			func(bucketName string, isValid bool) {
 				resource := garagev1alpha1.Bucket{
 					ObjectMeta: metav1.ObjectMeta{
@@ -375,6 +385,18 @@ var _ = Describe("Bucket Controller", func() {
 		)
 	})
 })
+
+func newBucket(namespace string) garagev1alpha1.Bucket {
+	return garagev1alpha1.Bucket{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      fixture.RandAlpha(8),
+			Namespace: namespace,
+		},
+		Spec: garagev1alpha1.BucketSpec{
+			Name: fixture.RandAlpha(8),
+		},
+	}
+}
 
 func setupBucket() (*BucketReconciler, *s3APIFake) {
 	s3API := newS3APIFake()
