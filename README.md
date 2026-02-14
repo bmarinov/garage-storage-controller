@@ -7,14 +7,20 @@ __garage-storage-controller__ handles bucket and access key management for [Gara
 
 ## Project status
 
-This project is in alpha and should be considered a technical preview. Core functionality is present, but some edge cases and common errors are not yet handled.
+This project is in alpha and should be considered a technical preview. Core functionality is present. Due to the limited scope and complexity, no major changes are expected. The API will stabilize when the project reaches beta.
 
-CRDs are still alpha, following is subject to change:
-- Naming conventions for created (owned) resources.
-- Importing existing resources (e.g. buckets).
-- Differentiate between exact and derived (pre-/suffixed) resource names.
+Important considerations:
+- CRDs are still alpha and the API might need to change.
+- The controller focuses on the Garage admin API for its functionality.
+  - Open an issue if an important bucket config option should be exposed.
+- Bucket configuration is primarily managed through the S3 API
+  - Use s3 clients and client libs for e.g. policies.
+  - Check [Garage: S3 compatibility status](https://garagehq.deuxfleurs.fr/documentation/reference-manual/s3-compatibility/) for details.
 
-API will stabilize as soon as the project hits beta state.
+Limitations:
+- Existing buckets currently cannot be imported.
+- Accessing buckets outside the 'owning' namespace is not allowed.
+- ConfigMap drift is hard to detect due to the current RBAC & security model.
 
 ## Quick start
 
@@ -87,6 +93,58 @@ Creating and managing storage buckets through Kubernetes API resources should be
 
 **Note:** Deleting `Bucket` API resources will never remove the actual buckets on the storage backend. Data loss is not boring. And we aim for boring here.
 
+## Accessing buckets in workloads
+
+The S3 API address and the access key are available in the aforementioned ConfigMap and Secret in the namespace.
+
+### Mounting bucket details as environment variables
+
+The configmap as well as the secret can be consumed as environment variables:
+```yaml
+kind: Pod
+spec:
+  containers:
+  - name: workload
+    env:
+    # s3 client config:
+    - name: S3_ENDPOINT
+      valueFrom:
+        configMapKeyRef:
+          name: bucket-sample
+          key: s3-endpoint
+    # bucket config values:
+    - name: FOO_BUCKET_NAME
+      valueFrom:
+        configMapKeyRef:
+          name: bucket-sample
+          key: bucket-name
+    - name: FOO_ACCESS_KEY
+      valueFrom:
+        secretKeyRef:
+          name: foo-bucket-access-rw
+          key: access-key-id
+    - name: FOO_ACCESS_KEY_SECRET
+      valueFrom:
+        secretKeyRef:
+          name: foo-bucket-access-rw
+          key: secret-access-key
+```
+
+### Overriding the ConfigMap name
+
+By default the controller will create a ConfigMap with the same name as the Bucket.  
+
+If you need a different name e.g. in case of a conflict, set `configMapName`:
+```yaml
+apiVersion: garage.getclustered.net/v1alpha1
+kind: Bucket
+metadata:
+  name: bucket-sample
+spec:
+  name: foo-global-name
+  configMapName: bucket-sample-config
+  maxSize: 10Gi
+```
 
 # Install
 

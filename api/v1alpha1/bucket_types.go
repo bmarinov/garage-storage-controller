@@ -45,6 +45,11 @@ type BucketSpec struct {
 	// MaxObjects is the number of objects the bucket can store.
 	// +optional
 	MaxObjects int64 `json:"maxObjects,omitempty"`
+
+	// The name of the ConfigMap that will be created to store bucket connection details.
+	// If not set, defaults to the Bucket resource name.
+	// +optional
+	ConfigMapName string `json:"configMapName,omitempty"`
 }
 
 // BucketStatus defines the observed state of Bucket.
