@@ -223,10 +223,51 @@ var _ = Describe("Bucket Controller", func() {
 			Expect(readyCondition.Reason).To(Equal(ReasonConfigMapNameConflict), "should reflect underlying configuration conflict")
 		})
 
-		// It("recovers from conflict once configMapName is set", func() {
+		It("recovers from conflict once configMapName is set", func() {
+			conflictingName := "foobar"
+			originalData := map[string]string{"foo": "bar"}
+			By("existing ConfigMap with name")
+			existingCM := corev1.ConfigMap{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      conflictingName,
+					Namespace: namespace,
+				},
+				Data: originalData,
+			}
+			Expect(k8sClient.Create(ctx, &existingCM)).Should(Succeed())
 
-		// })
+			By("bucket sharing configmap resource name")
+			bucket := newBucket(namespace)
+			bucket.Name = conflictingName
+			Expect(k8sClient.Create(ctx, &bucket)).Should(Succeed())
 
+			sut, _ := setupBucket()
+			shouldReconcile(sut, bucket.ObjectMeta)
+
+			By("bucket is not ready")
+			_ = k8sClient.Get(ctx, namespacedName(bucket.ObjectMeta), &bucket)
+			Expect(checkCondition(bucket.Status.Conditions, Ready, metav1.ConditionFalse)).Should(Succeed())
+
+			By("change CM name in bucket spec")
+			bucket.Spec.ConfigMapName = conflictingName + "-bucket-config"
+			Expect(k8sClient.Update(ctx, &bucket)).Should(Succeed())
+			shouldReconcile(sut, bucket.ObjectMeta)
+
+			By("bucket recovers to Ready")
+			_ = k8sClient.Get(ctx, namespacedName(bucket.ObjectMeta), &bucket)
+			Expect(checkCondition(bucket.Status.Conditions, Ready, metav1.ConditionTrue)).Should(Succeed())
+
+			By("new ConfigMap for Bucket created")
+			var bucketConfig corev1.ConfigMap
+			Expect(k8sClient.Get(ctx,
+				types.NamespacedName{Namespace: namespace, Name: bucket.Spec.ConfigMapName}, &bucketConfig)).
+				Should(Succeed())
+
+			By("original conflicting ConfigMap is not deleted")
+			Expect(k8sClient.Get(ctx, namespacedName(existingCM.ObjectMeta), &existingCM)).
+				Should(Succeed(), "should not delete unowned CM")
+			Expect(existingCM.Data).To(Equal(originalData))
+		})
 	})
 
 	Context("When reconciling existing buckets", func() {
@@ -393,6 +434,13 @@ func newBucket(namespace string) garagev1alpha1.Bucket {
 			Name: fixture.RandAlpha(8),
 		},
 	}
+}
+
+// shouldReconcile ensures that Reconcile() did not return an error.
+func shouldReconcile(controller *BucketReconciler, obj metav1.ObjectMeta) {
+	Expect(controller.Reconcile(ctx, reconcile.Request{
+		NamespacedName: namespacedName(obj)})).
+		Error().ToNot(HaveOccurred())
 }
 
 func setupBucket() (*BucketReconciler, *s3APIFake) {
