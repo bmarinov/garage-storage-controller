@@ -48,6 +48,9 @@ type BucketSpec struct {
 
 	// The name of the ConfigMap that will be created to store bucket connection details.
 	// If not set, defaults to the Bucket resource name.
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=253
+	// +kubebuilder:validation:Pattern=^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
 	// +optional
 	ConfigMapName string `json:"configMapName,omitempty"`
 }
