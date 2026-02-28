@@ -9,8 +9,7 @@ import (
 // NamespacePodExec returns a function running a command in a pod.
 func NamespacePodExec(namespace string, pod string) func(ctx context.Context, command ...string) (string, error) {
 	return func(ctx context.Context, command ...string) (string, error) {
-		args := []string{"exec", "-n", namespace, pod, "--"}
-		args = append(args, command...)
+		args := append([]string{"exec", "-n", namespace, pod, "--"}, command...)
 		cmd := exec.Command("kubectl", args...)
 		output, err := cmd.CombinedOutput()
 		return strings.TrimSpace(string(output)), err
