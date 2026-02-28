@@ -23,6 +23,9 @@ import (
 // AccessKeySpec defines the desired state of AccessKey
 type AccessKeySpec struct {
 	// The name of the secret that will be created to store the credentials.
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=253
+	// +kubebuilder:validation:Pattern=^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
 	// +kubebuilder:validation:Required
 	SecretName string `json:"secretName"`
 }

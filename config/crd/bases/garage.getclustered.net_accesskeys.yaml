@@ -49,6 +49,9 @@ spec:
               secretName:
                 description: The name of the secret that will be created to store
                   the credentials.
+                maxLength: 253
+                minLength: 1
+                pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
                 type: string
             required:
             - secretName
