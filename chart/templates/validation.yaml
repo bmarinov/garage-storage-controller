@@ -1,0 +1,7 @@
+{{- if and .Values.existingSecret .Values.apiToken }}
+{{- fail "Provide only one of existingSecret or apiToken, not both." }}
+{{- end }}
+
+{{- if and (not .Values.existingSecret) (not .Values.apiToken) }}
+{{- fail "Either existingSecret or apiToken must be set. See values.yaml for details." }}
+{{- end }}

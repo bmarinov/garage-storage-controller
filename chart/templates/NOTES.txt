@@ -1,0 +1,8 @@
+Garage Storage Controller deployed.
+
+Namespace:  {{ .Release.Namespace }}
+Image:      {{ .Values.image.repository }}:{{ .Values.image.tag }}
+Garage API: {{ .Values.config.garageApiEndpoint }}
+
+Check controller status:
+  kubectl -n {{ .Release.Namespace }} rollout status deployment/{{ include "garage-controller.fullname" . }}
