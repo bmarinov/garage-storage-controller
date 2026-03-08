@@ -1,0 +1,3 @@
+!.helmignore
+!templates/_helpers.tpl
+!templates/NOTES.txt
