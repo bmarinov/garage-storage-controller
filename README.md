@@ -155,8 +155,56 @@ The controller expects the following configuration to be available as environmen
 | Env variable            | Description                                                    |
 | ------------------------| -------------------------------------------------------------- |
 | GARAGE_API_ENDPOINT     | Endpoint address of the Garage admin API.                      |
-| GARAGE_API_TOKEN        | API key used to authenticate requests to the Garage admin API. |
+| GARAGE_API_TOKEN        | Token used to authenticate requests to the Garage admin API.   |
 | GARAGE_S3_API_ENDPOINT  | Endpoint address of the S3 client API provided to workloads.   |
+
+See the [Garage Administration API](https://garagehq.deuxfleurs.fr/documentation/reference-manual/admin-api/#user-defined-api-tokens) docs on how to obtain an admin token.
+
+## Install with Helm
+
+### Chart values
+
+Provide required configuration values:
+```yaml
+# values.yaml
+config:
+  garageApiEndpoint: "http://garage:3903"
+  garageS3ApiEndpoint: "http://garage:3900"
+```
+
+One of `existingSecret` and `apiToken` must be set. 
+
+**Existing secret:**
+
+Create a secret containing the admin token:
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: garage-api-token
+stringData:
+  api-token: "***"
+```
+Set the value accordingly
+```yaml
+existingSecret: "garage-api-token"
+```
+
+**Alternatively**, pass the API token directly as a chart value. A secret with a default name will be created:
+```sh
+helm install ... --set apiToken="$garage_api_token"
+```
+
+### Install
+```sh
+helm install garage-controller "./chart" \
+  -n garage-controller-system --create-namespace \
+  -f myvalues.yaml
+```
+
+## Manual installation
+
+### Configuration
 
 Create a configmap and a secret in the controller namespace and reference them in the deployment manifest.
 
@@ -164,8 +212,6 @@ Examples can be found in `config/env`:
 - [kustomization.yaml](config/env/kustomization.yaml) contains env var patches for the deployment.
 - [configmap.yaml](config/env/configmap.yaml) - configmap with keys for the endpoint addresses.
 - [secret.yaml](config/env/api_secret.yaml) - details on creating a valid secret.
-
-## Manual installation
 
 ### Custom resources
 
@@ -211,7 +257,7 @@ The controller kustomization includes an example deployment manifest:
 kubectl kustomize ./config/install/controller -o deployment.yaml
 ```
 
-The deployment will remain in status `CreateContainerConfigError` until the expected ConfigMap and Secret are created. See [Configuration](#configuration) for more details and an example.
+The deployment will remain in status `CreateContainerConfigError` until the expected ConfigMap and Secret are created. See [Configuration](#configuration-1) for more details and an example.
 
 
 ### Full manifest
@@ -220,11 +266,6 @@ Manifests can also be rendered to a single file:
 ```sh
 kubectl kustomize ./config/install/full > dist/install.yaml
 ```
-
-
-## Install with Helm
-
-TODO
 
 # Permissions model and security
 

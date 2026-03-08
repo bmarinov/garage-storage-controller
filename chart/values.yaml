@@ -1,0 +1,60 @@
+image:
+  repository: ghcr.io/bmarinov/garage-storage-controller
+  tag: ""
+  pullPolicy: IfNotPresent
+
+config: {}
+  # garageApiEndpoint: "http://garage:3903"
+  # garageS3ApiEndpoint: "http://garage:3900"
+
+# The API token is expected to be provided via an existing Secret.
+# Set existingSecret to use a pre-created secret. The secret must have an 'api-token' key.
+# Alternatively, set apiToken to have the chart create a Secret automatically.
+# existingSecret: ""
+# apiToken: ""
+
+replicas: 1
+
+serviceAccount:
+  annotations: {}
+  # The name of the service account to use.
+  # If not set, a name is generated using the fullname template
+  name: ""
+
+resources:
+  limits:
+    cpu: 500m
+    memory: 128Mi
+  requests:
+    cpu: 50m
+    memory: 64Mi
+
+podAnnotations: {}
+
+podLabels: {}
+
+securityContext:
+  capabilities:
+    drop:
+      - ALL
+  readOnlyRootFilesystem: true
+  runAsNonRoot: true
+  runAsUser: 1000
+  seccompProfile:
+    type: RuntimeDefault
+
+affinity:
+  nodeAffinity:
+    requiredDuringSchedulingIgnoredDuringExecution:
+      nodeSelectorTerms:
+        - matchExpressions:
+            - key: kubernetes.io/arch
+              operator: In
+              values: [amd64, arm64]
+            - key: kubernetes.io/os
+              operator: In
+              values: [linux]
+
+nodeSelector: {}
+
+tolerations: []
