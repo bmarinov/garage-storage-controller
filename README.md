@@ -197,7 +197,7 @@ helm install ... --set apiToken="$garage_api_token"
 
 ### Install
 ```sh
-helm install garage-controller "./chart" \
+helm install garage-controller oci://ghcr.io/bmarinov/charts/garage-storage-controller \
   -n garage-controller-system --create-namespace \
   -f myvalues.yaml
 ```
