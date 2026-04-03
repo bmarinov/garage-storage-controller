@@ -41,3 +41,9 @@ jobs:
         run: |
           helm push ${{ env.CHART_NAME }}-${{ steps.version.outputs.VERSION }}.tgz \
             oci://${{ env.REGISTRY }}/${{ github.repository_owner }}/charts
+
+      - name: Attach to app release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.APP_VERSION }}
+          files: ${{ env.CHART_NAME }}-${{ steps.version.outputs.VERSION }}.tgz
