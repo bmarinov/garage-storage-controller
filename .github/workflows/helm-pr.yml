@@ -13,8 +13,12 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
+      - name: Fetch main
+        run: git fetch origin main
+
       - name: Check version bump
         run: |
+          set -eo pipefail
           MAIN_VERSION=$(git show origin/main:chart/Chart.yaml | grep '^version:' | awk '{print $2}')
           PR_VERSION=$(grep '^version:' chart/Chart.yaml | awk '{print $2}')
           if [ "$MAIN_VERSION" = "$PR_VERSION" ]; then
