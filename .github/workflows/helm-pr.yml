@@ -1,0 +1,26 @@
+name: Helm lint and version check
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'chart/**'
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Check version bump
+        run: |
+          MAIN_VERSION=$(git show origin/main:chart/Chart.yaml | grep '^version:' | awk '{print $2}')
+          PR_VERSION=$(grep '^version:' chart/Chart.yaml | awk '{print $2}')
+          if [ "$MAIN_VERSION" = "$PR_VERSION" ]; then
+            echo "Chart version not updated"
+            exit 1
+          fi
+
+      - name: Helm lint
+        run: helm lint chart/
