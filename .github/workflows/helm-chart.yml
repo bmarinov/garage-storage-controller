@@ -1,0 +1,43 @@
+name: Release Helm chart
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "chart/**"
+  workflow_dispatch: {}
+
+jobs:
+  release-helm-chart:
+    runs-on: ubuntu-latest
+
+    env:
+      REGISTRY: ghcr.io
+      CHART_NAME: garage-storage-controller-chart
+
+    permissions:
+      contents: write
+      packages: write
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Chart and app version
+        id: version
+        run: |
+          echo "VERSION=$(grep '^version:' chart/Chart.yaml | awk '{print $2}')" >> $GITHUB_OUTPUT
+          echo "APP_VERSION=$(grep '^appVersion:' chart/Chart.yaml | awk '{print $2}' | tr -d '"')" >> $GITHUB_OUTPUT
+
+      - name: Helm package
+        run: helm package chart/
+
+      # TODO: docker hub
+
+      - name: Helm login - GHCR
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | helm registry login ${{ env.REGISTRY }} -u ${{ github.actor }} --password-stdin
+
+      - name: Push to GHCR
+        run: |
+          helm push ${{ env.CHART_NAME }}-${{ steps.version.outputs.VERSION }}.tgz \
+            oci://${{ env.REGISTRY }}/${{ github.repository_owner }}
