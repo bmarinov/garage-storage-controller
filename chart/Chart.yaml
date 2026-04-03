@@ -1,5 +1,5 @@
 apiVersion: v2
-name: garage-controller
+name: garage-storage-controller
 description: A controller for the management of Garage buckets and access keys
 type: application
 version: 0.1.0
