@@ -58,3 +58,7 @@ affinity:
 nodeSelector: {}
 
 tolerations: []
+
+imagePullSecrets: []
+
+podSecurityContext: {}
