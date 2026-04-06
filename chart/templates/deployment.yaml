@@ -1,7 +1,7 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: garage-controller
+  name: {{ include "garage-controller.fullname" . }}
   labels:
     {{- include "garage-controller.labels" . | nindent 4 }}
 spec:
@@ -43,17 +43,17 @@ spec:
             - name: GARAGE_API_ENDPOINT
               valueFrom:
                 configMapKeyRef:
-                  name: garage-controller-config
+                  name: {{ include "garage-controller.fullname" . }}-config
                   key: garage_api_endpoint
             - name: GARAGE_S3_API_ENDPOINT
               valueFrom:
                 configMapKeyRef:
-                  name: garage-controller-config
+                  name: {{ include "garage-controller.fullname" . }}-config
                   key: garage_s3_api_endpoint
             - name: GARAGE_API_TOKEN
               valueFrom:
                 secretKeyRef:
-                  name: {{ .Values.existingSecret | default "garage-api-token" }}
+                  name: {{ .Values.existingSecret | default (printf "%s-api-token" (include "garage-controller.fullname" .)) }}
                   key: api-token
           livenessProbe:
             httpGet:
