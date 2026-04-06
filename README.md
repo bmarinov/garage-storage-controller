@@ -197,9 +197,51 @@ helm install ... --set apiToken="$garage_api_token"
 
 ### Install
 ```sh
-helm install garage-controller oci://ghcr.io/bmarinov/charts/garage-storage-controller \
+helm install garage-storage-controller \
+  oci://ghcr.io/bmarinov/charts/garage-storage-controller \
   -n garage-controller-system --create-namespace \
   -f myvalues.yaml
+```
+
+### Enrolling namespaces
+
+The controller watches custom resources cluster-wide. It requires explicit permission to read and write ConfigMaps and Secrets in tenant namespaces. Without this, reconciliation will fail:
+```json
+{"error": "configmaps \"...\" is forbidden: User \"system:serviceaccount:garage-controller-system:...\" cannot get resource \"configmaps\" in API group \"\" in the namespace \"default\""}
+```
+
+After installation, the ServiceAccount name is printed in the Helm notes. Use it in the RoleBinding subject below.  
+The following example enrolls the `default` namespace:
+```yaml
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: garage-controller-namespace-access
+  namespace: default # target namespace
+rules:
+- apiGroups: [""]
+  resources: ["configmaps"]
+  verbs: ["create", "delete", "get", "list", "patch", "update"]
+- apiGroups: [""]
+  resources: ["secrets"]
+  verbs: ["create", "delete", "get", "list", "patch", "update"]
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: garage-controller-namespace-access-rolebinding
+  namespace: default # target namespace
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: garage-controller-namespace-access
+subjects:
+- kind: ServiceAccount
+  name: garage-storage-controller # controller ServiceAccount
+  namespace: garage-controller-system # controller namespace 
+
 ```
 
 ## Manual installation
