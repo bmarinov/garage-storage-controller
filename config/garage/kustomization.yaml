@@ -3,7 +3,7 @@ namespace: garage-system
 images:
   - name: dxflrs/garage
     newName: docker.io/dxflrs/garage
-    newTag: v2.1.0
+    newTag: v2.2.0
 
 resources:
   - garage.yaml

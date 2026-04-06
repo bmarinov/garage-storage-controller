@@ -26,7 +26,7 @@ spec:
           emptyDir: {}
       containers:
       - name: garage
-        image: dxflrs/garage:v2.1.0
+        image: dxflrs/garage:v2.2.0
         securityContext:
           readOnlyRootFilesystem: true
           runAsNonRoot: false

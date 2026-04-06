@@ -9,4 +9,7 @@ spec:
   ports:
   - port: 3903
     targetPort: 3903
-    name: http
+    name: admin
+  - port: 3900
+    targetPort: 3900
+    name: s3
