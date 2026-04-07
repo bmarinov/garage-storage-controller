@@ -68,6 +68,8 @@ func (r *AccessPolicyReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		For(&garagev1alpha1.AccessPolicy{}).
 		Watches(&garagev1alpha1.AccessKey{},
 			handler.EnqueueRequestsFromMapFunc(r.findPoliciesForAccessKey)).
+		Watches(&garagev1alpha1.Bucket{},
+			handler.EnqueueRequestsFromMapFunc(r.findPoliciesForBucket)).
 		Named("accesspolicy").
 		Complete(r)
 }
@@ -77,6 +79,9 @@ var errDependencyNotReady = errors.New("resource dependency is not ready")
 
 // accesskeyLabel on the AccessPolicy resource.
 const accesskeyLabel = "garage.getclustered.net/accesskey-name"
+
+// bucketLabel on the AccessPolicy resource.
+const bucketLabel = "garage.getclustered.net/bucket-name"
 
 // +kubebuilder:rbac:groups=garage.getclustered.net,resources=accesspolicies,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=garage.getclustered.net,resources=accesspolicies/status,verbs=get;update;patch
@@ -190,15 +195,44 @@ func (r *AccessPolicyReconciler) findPoliciesForAccessKey(ctx context.Context, o
 	return requests
 }
 
+func (r *AccessPolicyReconciler) findPoliciesForBucket(ctx context.Context, obj client.Object) []reconcile.Request {
+	bucket := obj.(*garagev1alpha1.Bucket)
+	var policies garagev1alpha1.AccessPolicyList
+	err := r.client.List(ctx, &policies,
+		client.InNamespace(bucket.Namespace),
+		client.MatchingLabels{bucketLabel: bucket.Name},
+	)
+	if err != nil {
+		return []reconcile.Request{}
+	}
+
+	requests := make([]reconcile.Request, len(policies.Items))
+	for i, policy := range policies.Items {
+		requests[i] = reconcile.Request{
+			NamespacedName: types.NamespacedName{
+				Name:      policy.Name,
+				Namespace: policy.Namespace,
+			},
+		}
+	}
+
+	return requests
+}
+
 func (r *AccessPolicyReconciler) ensureLabels(policy *garagev1alpha1.AccessPolicy) bool {
 	if policy.Labels == nil {
 		policy.Labels = make(map[string]string)
 	}
+	changed := false
 	if policy.Labels[accesskeyLabel] != policy.Spec.AccessKey {
 		policy.Labels[accesskeyLabel] = policy.Spec.AccessKey
-		return true
+		changed = true
 	}
-	return false
+	if policy.Labels[bucketLabel] != policy.Spec.Bucket {
+		policy.Labels[bucketLabel] = policy.Spec.Bucket
+		changed = true
+	}
+	return changed
 }
 
 func (r *AccessPolicyReconciler) reconcilePolicy(ctx context.Context, policy *garagev1alpha1.AccessPolicy) error {
@@ -206,6 +240,13 @@ func (r *AccessPolicyReconciler) reconcilePolicy(ctx context.Context, policy *ga
 
 	bucket, err := r.checkBucket(ctx, policy)
 	if err != nil {
+		if apierrors.IsNotFound(err) && policy.Status.BucketID != "" {
+			_ = r.adminClient.SetPermissions(
+				ctx, policy.Status.AccessKeyID, policy.Status.BucketID, s3.Permissions{})
+			// clear old bucket ID:
+			policy.Status.BucketID = ""
+		}
+
 		errs = append(errs, err)
 	}
 
