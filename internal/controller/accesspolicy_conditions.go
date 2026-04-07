@@ -15,9 +15,8 @@ type AccessPolicy struct {
 // PolicyAssignment conditions
 const (
 	PolicyAssignmentReady string = "PolicyReady"
-
-	PolicyBucketReady    string = "PolicyBucketReady"
-	PolicyAccessKeyReady string = "PolicyAccessKeyReady"
+	PolicyBucketReady     string = "PolicyBucketReady"
+	PolicyAccessKeyReady  string = "PolicyAccessKeyReady"
 )
 
 const (
@@ -91,7 +90,7 @@ func markPolicyAssignmentReady(p *garagev1alpha1.AccessPolicy) {
 func updateAccessPolicyCondition(p *garagev1alpha1.AccessPolicy) {
 	readyStat := metav1.ConditionFalse
 	readyReason := ReasonDependenciesNotReady
-	readyMessage := "Waiting for conditions " + AccessKeyReady + " and " + BucketReady
+	readyMessage := "Waiting for conditions " + PolicyAccessKeyReady + " and " + PolicyBucketReady
 
 	accessKeyCond := meta.FindStatusCondition(p.Status.Conditions, PolicyAccessKeyReady)
 	bucketCond := meta.FindStatusCondition(p.Status.Conditions, PolicyBucketReady)

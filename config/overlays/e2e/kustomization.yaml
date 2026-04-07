@@ -38,4 +38,4 @@ patches:
       group: apps
       version: v1
       kind: Deployment
-      name: garage-controller
+      name: garage-storage-controller

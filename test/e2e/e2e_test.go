@@ -136,7 +136,7 @@ var _ = Describe("Manager", Ordered, func() {
 
 		By("scaling down controller")
 		cmd = exec.Command("kubectl", "scale", "deployment",
-			"garage-storage-controller-controller-manager",
+			"garage-storage-controller",
 			"-n", namespace, "--replicas=0")
 		_, _ = utils.Run(cmd)
 
@@ -236,7 +236,7 @@ var _ = Describe("Manager", Ordered, func() {
 				podNames := utils.GetNonEmptyLines(podOutput)
 				g.Expect(podNames).To(HaveLen(1), "expected 1 controller pod running")
 				controllerPodName = podNames[0]
-				g.Expect(controllerPodName).To(ContainSubstring("garage-controller"))
+				g.Expect(controllerPodName).To(ContainSubstring("garage-storage-controller"))
 
 				// Validate the pod's status
 				cmd = exec.Command("kubectl", "get",

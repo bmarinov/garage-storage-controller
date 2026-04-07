@@ -7,7 +7,7 @@ __garage-storage-controller__ handles bucket and access key management for [Gara
 
 ## Project status
 
-This project is in alpha and should be considered a technical preview. Core functionality is present. Due to the limited scope and complexity, no major changes are expected. The API will stabilize when the project reaches beta.
+This project is in beta and the core functionality is present. Due to the limited scope and complexity, no major changes are expected.
 
 Important considerations:
 - CRDs are still alpha and the API might need to change.

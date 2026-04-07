@@ -58,11 +58,11 @@ type AccessPolicyStatus struct {
 	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
 
 	// +optional
-	BucketID string `json:"bucketId,omitempty"`
+	BucketID string `json:"bucketId"`
 
 	// The external Access Key identifier.
 	// +optional
-	AccessKeyID string `json:"accessKeyId,omitempty"`
+	AccessKeyID string `json:"accessKeyId"`
 }
 
 // +kubebuilder:object:root=true
