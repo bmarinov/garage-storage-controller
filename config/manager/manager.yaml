@@ -1,7 +1,7 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: garage-controller
+  name: garage-storage-controller
   labels:
     control-plane: controller-manager
     app.kubernetes.io/name: garage-storage-controller
@@ -75,5 +75,5 @@ spec:
         volumeMounts: []
         env: []
       volumes: []
-      serviceAccountName: garage-controller
+      serviceAccountName: garage-storage-controller
       terminationGracePeriodSeconds: 10
