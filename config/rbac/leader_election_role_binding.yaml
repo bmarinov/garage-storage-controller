@@ -11,5 +11,5 @@ roleRef:
   name: garage-controller-leader-election
 subjects:
 - kind: ServiceAccount
-  name: garage-controller
+  name: garage-storage-controller
   namespace: garage-controller-system
