@@ -273,8 +273,9 @@ var _ = Describe("AccessPolicy Controller", func() {
 			Expect(reconciled.Status.BucketID).ToNot(BeEmpty())
 			Expect(reconciled.Status.AccessKeyID).ToNot(BeEmpty())
 
-			By("storing name of accesskey resource in policy label")
+			By("storing dependency names in policy labels")
 			Expect(reconciled.Labels[accesskeyLabel]).To(Equal(reconciled.Spec.AccessKey))
+			Expect(reconciled.Labels[bucketLabel]).To(Equal(reconciled.Spec.Bucket))
 		})
 
 		It("should remove access grant on deletion", func() {
