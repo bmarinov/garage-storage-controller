@@ -15,6 +15,9 @@ COPY . .
 RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -a -o manager ./cmd/
 
 FROM gcr.io/distroless/static:nonroot
+LABEL org.opencontainers.image.source="https://github.com/bmarinov/garage-storage-controller" \
+      org.opencontainers.image.description="Kubernetes controller for the management of Garage (S3) buckets and access keys." \
+      org.opencontainers.image.licenses="Apache-2.0"
 WORKDIR /
 COPY --from=builder /workspace/manager .
 USER 65532:65532
