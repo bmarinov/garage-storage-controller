@@ -22,24 +22,19 @@ serviceAccount:
   name: ""
 
 resources:
-  limits:
-    cpu: 500m
-    memory: 128Mi
   requests:
     cpu: 50m
     memory: 64Mi
+  limits:
+    cpu: 500m
+    memory: 128Mi
 
 podAnnotations: {}
 
 podLabels: {}
 
-securityContext:
-  capabilities:
-    drop:
-      - ALL
-  readOnlyRootFilesystem: true
+podSecurityContext:
   runAsNonRoot: true
-  runAsUser: 1000
   seccompProfile:
     type: RuntimeDefault
 
@@ -60,5 +55,3 @@ nodeSelector: {}
 tolerations: []
 
 imagePullSecrets: []
-
-podSecurityContext: {}
