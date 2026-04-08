@@ -129,7 +129,7 @@ PLATFORMS ?= linux/amd64,linux/arm64
 docker-buildx: ## Build multiarch docker image for the manager (set PUSH=true to push)
 	- $(CONTAINER_TOOL) buildx create --name garage-storage-controller-builder
 	$(CONTAINER_TOOL) buildx use garage-storage-controller-builder
-	- $(CONTAINER_TOOL) buildx build $(if $(PUSH),--push) --platform=$(PLATFORMS) --tag ${IMG} .
+	- $(CONTAINER_TOOL) buildx build $(if $(PUSH),--push) --platform=$(PLATFORMS) --tag ${IMG} $(LABEL_ARGS) .
 	- $(CONTAINER_TOOL) buildx rm garage-storage-controller-builder
 
 .PHONY: build-installer
