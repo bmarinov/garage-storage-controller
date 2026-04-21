@@ -252,6 +252,11 @@ func (r *AccessPolicyReconciler) reconcilePolicy(ctx context.Context, policy *ga
 
 	accessKey, err := r.checkAccessKey(ctx, policy)
 	if err != nil {
+		if apierrors.IsNotFound(err) && policy.Status.AccessKeyID != "" {
+			_ = r.adminClient.SetPermissions(
+				ctx, policy.Status.AccessKeyID, policy.Status.BucketID, s3.Permissions{})
+			policy.Status.AccessKeyID = ""
+		}
 		errs = append(errs, err)
 	}
 
