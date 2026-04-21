@@ -491,7 +491,7 @@ var _ = Describe("AccessPolicy Controller", func() {
 			Expect(policy.Status.BucketID).To(BeEmpty())
 		})
 
-		FIt("revokes access when AccessKey resource is deleted", func() {
+		It("revokes access when AccessKey resource is deleted", func() {
 			By("creating dependencies")
 			bucketName := fixture.RandAlpha(12)
 			accessKeyName := fixture.RandAlpha(12)
@@ -567,7 +567,8 @@ var _ = Describe("AccessPolicy Controller", func() {
 			By("revoking permissions on Garage")
 			permKey := fmt.Sprintf("%s:%s", storedKeyID, storedBucketID)
 			Expect(apiClient.assignedPermissions).To(HaveKey(permKey))
-			Expect(apiClient.assignedPermissions[permKey]).To(Equal(s3.Permissions{}))
+			Expect(apiClient.assignedPermissions[permKey]).To(Equal(s3.Permissions{}),
+				"should drop permissions as fallback")
 		})
 	})
 })
