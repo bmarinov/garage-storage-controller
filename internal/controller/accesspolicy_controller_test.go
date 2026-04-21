@@ -490,6 +490,85 @@ var _ = Describe("AccessPolicy Controller", func() {
 			By("clearing BucketID from status")
 			Expect(policy.Status.BucketID).To(BeEmpty())
 		})
+
+		FIt("revokes access when AccessKey resource is deleted", func() {
+			By("creating dependencies")
+			bucketName := fixture.RandAlpha(12)
+			accessKeyName := fixture.RandAlpha(12)
+
+			b := garagev1alpha1.Bucket{
+				ObjectMeta: metav1.ObjectMeta{Name: bucketName, Namespace: namespace},
+				Spec:       garagev1alpha1.BucketSpec{Name: fixture.RandAlpha(8)},
+			}
+			Expect(k8sClient.Create(ctx, &b)).To(Succeed())
+			bucketController, _ := setupBucket()
+			Expect(bucketController.Reconcile(ctx, reconcile.Request{NamespacedName: namespacedName(b.ObjectMeta)})).
+				Error().ToNot(HaveOccurred())
+			Expect(k8sClient.Get(ctx, namespacedName(b.ObjectMeta), &b)).To(Succeed())
+
+			key := garagev1alpha1.AccessKey{
+				ObjectMeta: metav1.ObjectMeta{Name: accessKeyName, Namespace: namespace},
+				Spec:       garagev1alpha1.AccessKeySpec{SecretName: fixture.RandAlpha(8)},
+			}
+			Expect(k8sClient.Create(ctx, &key)).To(Succeed())
+			markAccessKeyReady(&key)
+			markSecretReady(&key)
+			key.Status.AccessKeyID = fixture.RandAlpha(12)
+			updateAccessKeyCondition(&key)
+			Expect(k8sClient.Status().Patch(ctx, &key, client.Merge, client.FieldOwner(bucketControllerName))).To(Succeed())
+
+			By("creating policy")
+			policy := garagev1alpha1.AccessPolicy{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      fixture.RandAlpha(8),
+					Namespace: namespace,
+				},
+				Spec: garagev1alpha1.AccessPolicySpec{
+					AccessKey: accessKeyName,
+					Bucket:    bucketName,
+					Permissions: garagev1alpha1.Permissions{
+						Read:  true,
+						Write: true,
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, &policy)).To(Succeed())
+
+			sut, apiClient := setupPolicyTest()
+			objID := types.NamespacedName{Name: policy.Name, Namespace: policy.Namespace}
+
+			By("reconciling to Ready")
+			Eventually(func(g Gomega) {
+				_, err := sut.Reconcile(ctx, reconcile.Request{NamespacedName: objID})
+				g.Expect(err).ToNot(HaveOccurred())
+
+				var reconciled garagev1alpha1.AccessPolicy
+				_ = k8sClient.Get(ctx, objID, &reconciled)
+
+				readyCond := meta.FindStatusCondition(reconciled.Status.Conditions, Ready)
+				g.Expect(readyCond).ToNot(BeNil())
+				g.Expect(readyCond.Status).To(Equal(metav1.ConditionTrue))
+			}).Should(Succeed())
+
+			By("capturing ids")
+			var reconciledPolicy garagev1alpha1.AccessPolicy
+			Expect(k8sClient.Get(ctx, objID, &reconciledPolicy)).To(Succeed())
+			storedKeyID := reconciledPolicy.Status.AccessKeyID
+			storedBucketID := reconciledPolicy.Status.BucketID
+			Expect(storedKeyID).ToNot(BeEmpty())
+			Expect(storedBucketID).ToNot(BeEmpty())
+
+			By("deleting AccessKey resource")
+			Expect(k8sClient.Delete(ctx, &key)).To(Succeed())
+
+			By("reconciling policy after AccessKey is gone")
+			_, _ = sut.Reconcile(ctx, reconcile.Request{NamespacedName: objID})
+
+			By("revoking permissions on Garage")
+			permKey := fmt.Sprintf("%s:%s", storedKeyID, storedBucketID)
+			Expect(apiClient.assignedPermissions).To(HaveKey(permKey))
+			Expect(apiClient.assignedPermissions[permKey]).To(Equal(s3.Permissions{}))
+		})
 	})
 })
 
