@@ -220,13 +220,13 @@ var _ = Describe("AccessPolicy Controller", func() {
 				Spec:       garagev1alpha1.AccessKeySpec{SecretName: "zzz-ns-secret"},
 			}
 			Expect(k8sClient.Create(ctx, &keyRes)).To(Succeed())
-
-			markAccessKeyReady(&keyRes)
-			markSecretReady(&keyRes)
-			// set status fields to fake readiness
-			keyRes.Status.AccessKeyID = fixture.RandAlpha(12)
-			updateAccessKeyCondition(&keyRes)
-			Expect(k8sClient.Status().Patch(ctx, &keyRes, client.Merge, client.FieldOwner(bucketControllerName))).To(Succeed())
+			keyCtrl, _ := setup()
+			Expect(keyCtrl.Reconcile(ctx, reconcile.Request{NamespacedName: namespacedName(keyRes.ObjectMeta)})).Error().ToNot(HaveOccurred())
+			Expect(k8sClient.Get(ctx, namespacedName(keyRes.ObjectMeta), &keyRes)).To(Succeed())
+			DeferCleanup(func() {
+				keyRes.Finalizers = nil
+				_ = k8sClient.Update(ctx, &keyRes)
+			})
 
 			By("creating a referencing policy")
 			policy := garagev1alpha1.AccessPolicy{
@@ -296,11 +296,13 @@ var _ = Describe("AccessPolicy Controller", func() {
 				Spec:       garagev1alpha1.AccessKeySpec{SecretName: "zzz-ns-secret"},
 			}
 			_ = k8sClient.Create(ctx, &k)
-
-			markAccessKeyReady(&k)
-			markSecretReady(&k)
-			updateAccessKeyCondition(&k)
-			_ = k8sClient.Status().Patch(ctx, &k, client.Merge, client.FieldOwner(bucketControllerName))
+			keyCtrl, _ := setup()
+			Expect(keyCtrl.Reconcile(ctx, reconcile.Request{NamespacedName: namespacedName(k.ObjectMeta)})).Error().ToNot(HaveOccurred())
+			Expect(k8sClient.Get(ctx, namespacedName(k.ObjectMeta), &k)).To(Succeed())
+			DeferCleanup(func() {
+				k.Finalizers = nil
+				_ = k8sClient.Update(ctx, &k)
+			})
 
 			By("creating access policy for bucket")
 			policy := garagev1alpha1.AccessPolicy{
@@ -433,11 +435,13 @@ var _ = Describe("AccessPolicy Controller", func() {
 				Spec:       garagev1alpha1.AccessKeySpec{SecretName: fixture.RandAlpha(8)},
 			}
 			Expect(k8sClient.Create(ctx, &key)).To(Succeed())
-			markAccessKeyReady(&key)
-			markSecretReady(&key)
-			key.Status.AccessKeyID = fixture.RandAlpha(12)
-			updateAccessKeyCondition(&key)
-			Expect(k8sClient.Status().Patch(ctx, &key, client.Merge, client.FieldOwner(bucketControllerName))).To(Succeed())
+			keyCtrl, _ := setup()
+			Expect(keyCtrl.Reconcile(ctx, reconcile.Request{NamespacedName: namespacedName(key.ObjectMeta)})).Error().ToNot(HaveOccurred())
+			Expect(k8sClient.Get(ctx, namespacedName(key.ObjectMeta), &key)).To(Succeed())
+			DeferCleanup(func() {
+				key.Finalizers = nil
+				_ = k8sClient.Update(ctx, &key)
+			})
 
 			By("creating policy")
 			policy := garagev1alpha1.AccessPolicy{
