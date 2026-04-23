@@ -21,13 +21,17 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"fmt"
+	"net"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
+	"github.com/bmarinov/garage-storage-controller/internal/garage"
 	"github.com/bmarinov/garage-storage-controller/internal/garage/integrationtests"
 	"github.com/bmarinov/garage-storage-controller/internal/tests"
 	"github.com/bmarinov/garage-storage-controller/test/e2e/utils"
@@ -392,6 +396,142 @@ var _ = Describe("Manager", Ordered, func() {
 				output, _ := utils.Run(cmd)
 				g.Expect(strings.TrimSpace(output)).To(BeEmpty(), "expect no output when not found")
 			}).Should(Succeed(), "should delete ConfigMap after Bucket")
+		})
+	})
+
+	Context("Garage state", Ordered, func() {
+		var (
+			garageClient   *garage.AdminClient
+			portForwardCmd *exec.Cmd
+			keyID          string
+			bucketID       string
+			testNamespace  string
+			overlayDir     string
+		)
+
+		BeforeAll(func() {
+			By("reading Garage admin token from secret")
+			cmd := exec.Command("kubectl", "get", "secret", garageAPISecret,
+				"-n", garageNamespace,
+				"-o", "jsonpath={.data.api-token}")
+			tokenBase64, err := utils.Run(cmd)
+			Expect(err).ToNot(HaveOccurred())
+			tokenBytes, err := base64.StdEncoding.DecodeString(strings.TrimSpace(tokenBase64))
+			Expect(err).ToNot(HaveOccurred())
+
+			By("port forward Garage admin API")
+			portForwardCmd = exec.Command("kubectl", "port-forward",
+				"pod/garage-0", "13903:3903",
+				"-n", garageNamespace)
+			Expect(portForwardCmd.Start()).To(Succeed())
+
+			garageClient = garage.NewClient("http://localhost:13903", string(tokenBytes))
+
+			By("waiting for port-forward to be ready")
+			Eventually(func(g Gomega) {
+				conn, err := net.DialTimeout("tcp", "localhost:13903", time.Second)
+				g.Expect(err).ToNot(HaveOccurred())
+				_ = conn.Close()
+			}).Should(Succeed())
+
+			By("creating isolated test namespace with controller RBAC")
+			overlayDir, err = os.MkdirTemp("config/rbac/namespaces", "e2e-")
+			Expect(err).ToNot(HaveOccurred())
+			testNamespace = filepath.Base(overlayDir)
+
+			kustomization := fmt.Sprintf(`
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: %s
+resources:
+- ../base
+`, testNamespace)
+			Expect(
+				os.WriteFile(
+					filepath.Join(overlayDir, "kustomization.yaml"), []byte(kustomization), 0600)).
+				To(Succeed())
+
+			cmd = exec.Command("kubectl", "create", "ns", testNamespace)
+			_, err = utils.Run(cmd)
+			Expect(err).ToNot(HaveOccurred())
+
+			cmd = exec.Command("kubectl", "apply", "-k", overlayDir)
+			_, err = utils.Run(cmd)
+			Expect(err).ToNot(HaveOccurred())
+
+			By("creating resources")
+			for _, manifest := range []string{
+				"config/samples/garage_v1alpha1_accesskey.yaml",
+				"config/samples/garage_v1alpha1_bucket.yaml",
+				"config/samples/garage_v1alpha1_accesspolicy.yaml",
+			} {
+				cmd := exec.Command("kubectl", "apply", "-f", manifest, "-n", testNamespace)
+				_, err := utils.Run(cmd)
+				Expect(err).ToNot(HaveOccurred())
+			}
+
+			By("waiting for AccessPolicy Ready")
+			Eventually(func(g Gomega) {
+				cmd := exec.Command("kubectl", "wait", "accesspolicy", wellKnown.accessPolicyName,
+					"-n", testNamespace, "--for=condition=Ready", "--timeout=1s")
+				g.Expect(cmd.Run()).To(Succeed())
+			}).Should(Succeed())
+
+			By("reading access key from Secret")
+			cmd = exec.Command("kubectl", "get", "secret", wellKnown.secretName,
+				"-n", testNamespace,
+				"-o", "jsonpath={.data.access-key-id}")
+			keyIDBase64, err := utils.Run(cmd)
+			Expect(err).ToNot(HaveOccurred())
+			keyIDBytes, err := base64.StdEncoding.DecodeString(strings.TrimSpace(keyIDBase64))
+			Expect(err).ToNot(HaveOccurred())
+			keyID = string(keyIDBytes)
+			Expect(keyID).ToNot(BeEmpty())
+
+			By("reading bucket ID from Bucket status")
+			cmd = exec.Command("kubectl", "get", "bucket", wellKnown.bucketName,
+				"-n", testNamespace,
+				"-o", "jsonpath={.status.bucketId}")
+			bucketIDRaw, err := utils.Run(cmd)
+			Expect(err).ToNot(HaveOccurred())
+			bucketID = strings.TrimSpace(bucketIDRaw)
+			Expect(bucketID).ToNot(BeEmpty())
+		})
+		It("sets permissions in Garage when AccessPolicy is Ready", func() {
+			permissions, err := garageClient.GetPermissions(context.Background(), keyID, bucketID)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(permissions.Read).To(BeTrue(), "expected read permission")
+			Expect(permissions.Write).To(BeTrue(), "expected write permission")
+			Expect(permissions.Owner).To(BeFalse(), "expected no owner permission")
+		})
+
+		It("revokes permissions in Garage when AccessPolicy deleted", func() {
+			By("deleting AccessPolicy")
+			cmd := exec.Command("kubectl", "delete", "accesspolicy", wellKnown.accessPolicyName,
+				"-n", testNamespace, "--wait=true", "--timeout=30s")
+			_, err := utils.Run(cmd)
+			Expect(err).ToNot(HaveOccurred())
+
+			By("verifying permissions in Garage")
+			Eventually(func(g Gomega) {
+				permissions, err := garageClient.PermissionClient.GetPermissions(context.Background(), keyID, bucketID)
+				g.Expect(err).ToNot(HaveOccurred())
+				g.Expect(permissions.Read).To(BeFalse())
+				g.Expect(permissions.Write).To(BeFalse())
+				g.Expect(permissions.Owner).To(BeFalse())
+			}).Should(Succeed())
+		})
+
+		AfterAll(func() {
+			if testNamespace != "" {
+				cmd := exec.Command("kubectl", "delete", "ns", testNamespace, "--wait=false")
+				_, _ = utils.Run(cmd)
+			}
+			_ = os.RemoveAll(overlayDir)
+
+			if portForwardCmd != nil && portForwardCmd.Process != nil {
+				_ = portForwardCmd.Process.Kill()
+			}
 		})
 	})
 
