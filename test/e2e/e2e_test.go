@@ -302,6 +302,43 @@ var _ = Describe("Manager", Ordered, func() {
 			}).Should(Succeed())
 		})
 
+		It("should store access credentials in Secret", func() {
+			// lookup by string to catch breaking changes in the constants:
+			By("verifying access-key-id is set")
+			cmd := exec.Command("kubectl", "get", "secret", wellKnown.secretName,
+				"-n", "default",
+				"-o", `jsonpath={.data.access-key-id}`)
+			output, err := utils.Run(cmd)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(strings.TrimSpace(output)).ToNot(BeEmpty(), "access-key-id missing from Secret")
+
+			By("verifying secret-access-key is set")
+			cmd = exec.Command("kubectl", "get", "secret", wellKnown.secretName,
+				"-n", "default",
+				"-o", `jsonpath={.data.secret-access-key}`)
+			output, err = utils.Run(cmd)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(strings.TrimSpace(output)).ToNot(BeEmpty(), "secret-access-key missing from Secret")
+		})
+
+		It("should store bucket connection details in CM", func() {
+			By("verifying bucket-name is present")
+			cmd := exec.Command("kubectl", "get", "cm", wellKnown.configMapName,
+				"-n", "default",
+				"-o", `jsonpath={.data.bucket-name}`)
+			output, err := utils.Run(cmd)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(strings.TrimSpace(output)).ToNot(BeEmpty(), "bucket-name missing")
+
+			By("verifying s3-endpoint is set from config")
+			cmd = exec.Command("kubectl", "get", "cm", wellKnown.configMapName,
+				"-n", "default",
+				"-o", `jsonpath={.data.s3-endpoint}`)
+			output, err = utils.Run(cmd)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(strings.TrimSpace(output)).ToNot(BeEmpty(), "s3-endpoint missing")
+		})
+
 		It("recreates missing cm for existing buckets", func() {
 			Skip("See issue #22: CMs are not being watched.")
 			By("storing original ConfigMap UID")
