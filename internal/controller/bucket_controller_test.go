@@ -421,6 +421,85 @@ var _ = Describe("Bucket Controller", func() {
 			Entry("too short", "ab", false),
 			Entry("starts with hyphen", "-invalid", false),
 		)
+
+		DescribeTable("validates existingBucket field combinations",
+			func(spec garagev1alpha1.BucketSpec, isValid bool) {
+				resource := garagev1alpha1.Bucket{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      fixture.RandAlpha(8),
+						Namespace: namespace,
+					},
+					Spec: spec,
+				}
+				err := k8sClient.Create(ctx, &resource)
+				DeferCleanup(func() {
+					_ = k8sClient.Delete(ctx, &resource)
+				})
+				if isValid {
+					Expect(err).To(Succeed())
+				} else {
+					Expect(err).To(HaveOccurred())
+				}
+			},
+			Entry("name only",
+				garagev1alpha1.BucketSpec{Name: "my-bucket"},
+				true,
+			),
+			Entry("existingBucket only",
+				garagev1alpha1.BucketSpec{
+					ExistingBucket: &garagev1alpha1.ExistingBucketSpec{
+						Name:                 "my-garage-bucket",
+						OwnershipProofSecret: "my-secret",
+					}},
+				true,
+			),
+			Entry("neither name nor existingBucket",
+				garagev1alpha1.BucketSpec{},
+				false,
+			),
+			Entry("both name and existingBucket",
+				garagev1alpha1.BucketSpec{
+					Name: "my-bucket",
+					ExistingBucket: &garagev1alpha1.ExistingBucketSpec{
+						Name:                 "my-garage-bucket",
+						OwnershipProofSecret: "my-secret",
+					},
+				},
+				false),
+			Entry("existingBucket without ownershipProofSecret",
+				garagev1alpha1.BucketSpec{
+					ExistingBucket: &garagev1alpha1.ExistingBucketSpec{
+						Name: "my-garage-bucket",
+					}},
+				false,
+			),
+			Entry("existingBucket without name",
+				garagev1alpha1.BucketSpec{
+					ExistingBucket: &garagev1alpha1.ExistingBucketSpec{
+						OwnershipProofSecret: "my-secret",
+					}},
+				false,
+			),
+		)
+
+		It("rejects update that changes existingBucket.name", func() {
+			resource := garagev1alpha1.Bucket{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      fixture.RandAlpha(8),
+					Namespace: namespace,
+				},
+				Spec: garagev1alpha1.BucketSpec{ExistingBucket: &garagev1alpha1.ExistingBucketSpec{
+					Name:                 "original-bucket",
+					OwnershipProofSecret: "my-secret",
+				}},
+			}
+			Expect(k8sClient.Create(ctx, &resource)).To(Succeed())
+			DeferCleanup(func() { _ = k8sClient.Delete(ctx, &resource) })
+
+			Expect(k8sClient.Get(ctx, namespacedName(resource.ObjectMeta), &resource)).To(Succeed())
+			resource.Spec.ExistingBucket.Name = "different-bucket"
+			Expect(k8sClient.Update(ctx, &resource)).To(HaveOccurred())
+		})
 	})
 })
 

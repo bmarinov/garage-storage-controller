@@ -43,7 +43,7 @@ type ExistingBucketSpec struct {
 
 // BucketSpec defines the desired state of Bucket
 //
-// +kubebuilder:validation:XValidation:rule="(has(self.name) && self.name != ”) != has(self.existingBucket)",message="exactly one of spec.name or spec.existingBucket must be set"
+// +kubebuilder:validation:XValidation:rule="(has(self.name) && self.name != '') != has(self.existingBucket)",message="exactly one of spec.name or spec.existingBucket must be set"
 // +kubebuilder:validation:XValidation:rule="!has(self.existingBucket) || !has(oldSelf.existingBucket) || self.existingBucket.name == oldSelf.existingBucket.name",message="spec.existingBucket.name is immutable"
 type BucketSpec struct {
 	// Name is the desired bucket name.
