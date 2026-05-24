@@ -52,12 +52,17 @@ type BucketClient interface {
 	Update(ctx context.Context, id string, quotas s3.Quotas) error
 }
 
+type OwnershipVerifier interface {
+	GetPermissions(ctx context.Context, keyID, bucketID string) (s3.Permissions, error)
+}
+
 // BucketReconciler reconciles a Bucket object
 type BucketReconciler struct {
 	client        client.Client
 	Scheme        *runtime.Scheme
 	bucket        BucketClient
 	s3APIEndpoint string
+	ownership     OwnershipVerifier
 }
 
 func NewBucketReconciler(
@@ -65,12 +70,14 @@ func NewBucketReconciler(
 	scheme *runtime.Scheme,
 	s3Client BucketClient,
 	s3APIEndpoint string,
+	ownershipVerifier OwnershipVerifier,
 ) *BucketReconciler {
 	return &BucketReconciler{
 		client:        apiClient,
 		Scheme:        scheme,
 		bucket:        s3Client,
 		s3APIEndpoint: s3APIEndpoint,
+		ownership:     ownershipVerifier,
 	}
 }
 

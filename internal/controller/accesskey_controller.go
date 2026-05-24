@@ -38,7 +38,7 @@ import (
 	"github.com/bmarinov/garage-storage-controller/internal/s3"
 )
 
-// Keys in the secret holding the access key information.
+// Keys in the secret holding the credentials.
 const (
 	SecretKeyAccessKeyID     = "access-key-id"
 	SecretKeySecretAccessKey = "secret-access-key"
