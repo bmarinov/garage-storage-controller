@@ -123,25 +123,9 @@ func (r *BucketReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 }
 
 func (r *BucketReconciler) reconcileBucket(ctx context.Context, bucket *garagev1alpha1.Bucket) error {
-	alias := suffixedResourceName(bucket.Spec.Name, bucket.ObjectMeta)
-	s3Bucket, err := r.bucket.Get(ctx, alias)
+	s3Bucket, alias, err := r.resolveNewBucket(ctx, bucket)
 	if err != nil {
-		if errors.Is(err, s3.ErrResourceNotFound) {
-			s3Bucket, err = r.bucket.Create(ctx, alias)
-			if err != nil {
-				markBucketNotReady(
-					bucket,
-					"CreateFailed",
-					"Failed to create bucket '%s': %v", alias, err)
-				return fmt.Errorf("create new bucket: %w", err)
-			}
-		} else {
-			markBucketNotReady(
-				bucket,
-				"UnknownState",
-				"S3 API error: %v", err)
-			return err
-		}
+		return err
 	}
 
 	if bucket.Status.BucketID == "" {
@@ -281,6 +265,24 @@ func compareSpec(bucket s3.Bucket, spec garagev1alpha1.BucketSpec) bool {
 	}
 
 	return false
+}
+
+func (r *BucketReconciler) resolveNewBucket(ctx context.Context, bucket *garagev1alpha1.Bucket) (s3.Bucket, string, error) {
+	alias := suffixedResourceName(bucket.Spec.Name, bucket.ObjectMeta)
+	s3Bucket, err := r.bucket.Get(ctx, alias)
+	if err != nil {
+		if errors.Is(err, s3.ErrResourceNotFound) {
+			s3Bucket, err = r.bucket.Create(ctx, alias)
+			if err != nil {
+				markBucketNotReady(bucket, "CreateFailed", "Failed to create bucket '%s': %v", alias, err)
+				return s3.Bucket{}, "", fmt.Errorf("create new bucket: %w", err)
+			}
+		} else {
+			markBucketNotReady(bucket, "UnknownState", "S3 API error: %v", err)
+			return s3.Bucket{}, "", err
+		}
+	}
+	return s3Bucket, alias, nil
 }
 
 // suffixedResourceName extends a name with a suffix based on the resource UID.
