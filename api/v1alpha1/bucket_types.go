@@ -31,14 +31,14 @@ type ExistingBucketSpec struct {
 	// +kubebuilder:validation:MaxLength=63
 	Name string `json:"name"`
 
-	// OwnershipProofSecret is the name of a Secret containing a Garage access key
+	// OwnerKeySecret is the name of a Secret containing a Garage access key
 	// with owner permission on the bucket.
 	//
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:MinLength=1
 	// +kubebuilder:validation:MaxLength=253
 	// +kubebuilder:validation:Pattern=^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
-	OwnershipProofSecret string `json:"ownershipProofSecret"`
+	OwnerKeySecret string `json:"ownerKeySecret"`
 }
 
 // BucketSpec defines the desired state of Bucket

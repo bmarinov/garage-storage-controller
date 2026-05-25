@@ -102,7 +102,7 @@ spec:
             type: object
             x-kubernetes-validations:
             - message: exactly one of spec.name or spec.existingBucket must be set
-              rule: (has(self.name) && self.name != ”) != has(self.existingBucket)
+              rule: (has(self.name) && self.name != '') != has(self.existingBucket)
             - message: spec.existingBucket.name is immutable
               rule: '!has(self.existingBucket) || !has(oldSelf.existingBucket) ||
                 self.existingBucket.name == oldSelf.existingBucket.name'
