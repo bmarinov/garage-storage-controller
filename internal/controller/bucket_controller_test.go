@@ -442,14 +442,14 @@ var _ = Describe("Bucket Controller", func() {
 				}
 			},
 			Entry("name only",
-				garagev1alpha1.BucketSpec{Name: "my-bucket"},
+				garagev1alpha1.BucketSpec{Name: fixture.RandAlpha(8)},
 				true,
 			),
 			Entry("existingBucket only",
 				garagev1alpha1.BucketSpec{
 					ExistingBucket: &garagev1alpha1.ExistingBucketSpec{
-						Name:                 "my-garage-bucket",
-						OwnerKeySecret: "my-secret",
+						Name:           fixture.RandAlpha(8),
+						OwnerKeySecret: fixture.RandAlpha(6),
 					}},
 				true,
 			),
@@ -459,24 +459,24 @@ var _ = Describe("Bucket Controller", func() {
 			),
 			Entry("both name and existingBucket",
 				garagev1alpha1.BucketSpec{
-					Name: "my-bucket",
+					Name: fixture.RandAlpha(8),
 					ExistingBucket: &garagev1alpha1.ExistingBucketSpec{
-						Name:                 "my-garage-bucket",
-						OwnerKeySecret: "my-secret",
+						Name:           fixture.RandAlpha(8),
+						OwnerKeySecret: fixture.RandAlpha(6),
 					},
 				},
 				false),
-			Entry("existingBucket without ownershipProofSecret",
+			Entry("existingBucket without ownerKeySecret",
 				garagev1alpha1.BucketSpec{
 					ExistingBucket: &garagev1alpha1.ExistingBucketSpec{
-						Name: "my-garage-bucket",
+						Name: fixture.RandAlpha(8),
 					}},
 				false,
 			),
 			Entry("existingBucket without name",
 				garagev1alpha1.BucketSpec{
 					ExistingBucket: &garagev1alpha1.ExistingBucketSpec{
-						OwnerKeySecret: "my-secret",
+						OwnerKeySecret: fixture.RandAlpha(6),
 					}},
 				false,
 			),
@@ -489,7 +489,7 @@ var _ = Describe("Bucket Controller", func() {
 					Namespace: namespace,
 				},
 				Spec: garagev1alpha1.BucketSpec{ExistingBucket: &garagev1alpha1.ExistingBucketSpec{
-					Name:                 "original-bucket",
+					Name:           "original-bucket",
 					OwnerKeySecret: "my-secret",
 				}},
 			}
@@ -504,10 +504,9 @@ var _ = Describe("Bucket Controller", func() {
 
 	Context("When reclaiming an existing bucket", func() {
 		const existingBucketName = "garage-bucket-f31d0"
-		const secretName = "ownership-proof"
 		ownerKeyID := fixture.RandAlpha(12) // key ID in Garage
 
-		newExistingBucketResource := func(namespace string) garagev1alpha1.Bucket {
+		newExistingBucketResource := func(namespace string, secretRef string) garagev1alpha1.Bucket {
 			return garagev1alpha1.Bucket{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      fixture.RandAlpha(8),
@@ -515,17 +514,17 @@ var _ = Describe("Bucket Controller", func() {
 				},
 				Spec: garagev1alpha1.BucketSpec{
 					ExistingBucket: &garagev1alpha1.ExistingBucketSpec{
-						Name:                 existingBucketName,
-						OwnerKeySecret: secretName,
+						Name:           existingBucketName,
+						OwnerKeySecret: secretRef,
 					},
 				},
 			}
 		}
 
-		ownershipSecret := func(namespace, name, keyID string) corev1.Secret {
+		keySecret := func(namespace, keyID string) corev1.Secret {
 			return corev1.Secret{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:      name,
+					Name:      fixture.RandAlpha(8),
 					Namespace: namespace,
 				},
 				Data: map[string][]byte{
@@ -535,25 +534,25 @@ var _ = Describe("Bucket Controller", func() {
 			}
 		}
 
-		It("imports bucket when ownership key has owner permission", func() {
-			const existingBucketID = "pre-existing-id"
+		It("imports bucket when referenced key has owner permission", func() {
+			existingBucketID := fixture.RandAlpha(12)
 
-			By("pre-seeding the Garage bucket in the fake")
+			By("pre-creating the Garage bucket")
 			sut, s3API, verifier := setupBucket()
 			s3API.buckets[existingBucketID] = s3.Bucket{
 				ID:            existingBucketID,
 				GlobalAliases: []string{existingBucketName},
 			}
 
-			By("creating the ownership-proof Secret")
-			secret := ownershipSecret(namespace, secretName, ownerKeyID)
+			By("creating a Secret with the key")
+			secret := keySecret(namespace, ownerKeyID)
 			Expect(k8sClient.Create(ctx, &secret)).To(Succeed())
 
-			By("configuring the ownership verifier to confirm owner permission")
+			By("assigning owner permissions to the key")
 			Expect(verifier.SetPermissions(ctx, ownerKeyID, existingBucketID, s3.Permissions{Owner: true, Read: true, Write: true})).To(Succeed())
 
 			By("creating the Bucket CR")
-			bucket := newExistingBucketResource(namespace)
+			bucket := newExistingBucketResource(namespace, secret.Name)
 			Expect(k8sClient.Create(ctx, &bucket)).To(Succeed())
 
 			By("reconciling")
@@ -578,6 +577,74 @@ var _ = Describe("Bucket Controller", func() {
 			}).Should(Succeed())
 		})
 
+		It("sets Ready condition to false when referenced key does not have owner permission", func() {
+			existingBucketID := fixture.RandAlpha(12)
+
+			By("pre-creating the Garage bucket")
+			sut, s3API, verifier := setupBucket()
+			s3API.buckets[existingBucketID] = s3.Bucket{
+				ID:            existingBucketID,
+				GlobalAliases: []string{existingBucketName},
+			}
+
+			By("creating the owner proof Secret")
+			secret := keySecret(namespace, ownerKeyID)
+			Expect(k8sClient.Create(ctx, &secret)).To(Succeed())
+
+			By("allowing read-only permissions for access key")
+			Expect(
+				verifier.SetPermissions(
+					ctx, ownerKeyID, existingBucketID, s3.Permissions{Owner: false, Read: true})).
+				To(Succeed())
+
+			By("creating the Bucket resource")
+			bucket := newExistingBucketResource(namespace, secret.Name)
+			Expect(k8sClient.Create(ctx, &bucket)).To(Succeed())
+
+			shouldReconcile(sut, bucket.ObjectMeta)
+
+			Expect(k8sClient.Get(ctx, namespacedName(bucket.ObjectMeta), &bucket)).To(Succeed())
+
+			By("BucketReady condition is False with specific reason")
+			Expect(checkCondition(bucket.Status.Conditions, BucketReady, metav1.ConditionFalse)).To(Succeed())
+			Expect(meta.FindStatusCondition(bucket.Status.Conditions, BucketReady).Reason).To(Equal(ReasonOwnershipVerificationFailed))
+
+			By("top-level Ready condition is False")
+			Expect(checkCondition(bucket.Status.Conditions, Ready, metav1.ConditionFalse)).To(Succeed())
+			Expect(meta.FindStatusCondition(bucket.Status.Conditions, Ready).Reason).To(Equal(ReasonOwnershipVerificationFailed))
+
+			By("no ConfigMap is created")
+			var cm corev1.ConfigMap
+			Expect(k8sClient.Get(ctx, types.NamespacedName{Namespace: namespace, Name: bucket.Name}, &cm)).
+				Error().To(Satisfy(apierrors.IsNotFound))
+		})
+
+		It("sets Ready false with reason when the referenced Secret does not exist", func() {
+			existingBucketID := fixture.RandAlpha(12)
+
+			By("pre-creating the Garage bucket")
+			sut, s3API, _ := setupBucket()
+			s3API.buckets[existingBucketID] = s3.Bucket{
+				ID:            existingBucketID,
+				GlobalAliases: []string{existingBucketName},
+			}
+
+			By("creating a Bucket resource referencing a non-existent Secret")
+			bucket := newExistingBucketResource(namespace, "unknown-secret-"+fixture.RandAlpha(4))
+			Expect(k8sClient.Create(ctx, &bucket)).To(Succeed())
+
+			shouldReconcile(sut, bucket.ObjectMeta)
+
+			Expect(k8sClient.Get(ctx, namespacedName(bucket.ObjectMeta), &bucket)).To(Succeed())
+
+			By("BucketReady condition is False with 'not found' reason")
+			Expect(checkCondition(bucket.Status.Conditions, BucketReady, metav1.ConditionFalse)).To(Succeed())
+			Expect(meta.FindStatusCondition(bucket.Status.Conditions, BucketReady).Reason).To(Equal(ReasonOwnerKeySecretNotFound))
+
+			By("top-level Ready condition is False")
+			Expect(checkCondition(bucket.Status.Conditions, Ready, metav1.ConditionFalse)).To(Succeed())
+			Expect(meta.FindStatusCondition(bucket.Status.Conditions, Ready).Reason).To(Equal(ReasonOwnerKeySecretNotFound))
+		})
 	})
 })
 

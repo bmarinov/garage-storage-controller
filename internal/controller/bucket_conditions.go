@@ -9,9 +9,11 @@ import (
 )
 
 const (
-	BucketReady                 string = "BucketReady"
-	BucketConfigMapReady        string = "BucketConfigMapReady"
-	ReasonConfigMapNameConflict string = "ConfigMapNameConflict"
+	BucketReady                       string = "BucketReady"
+	BucketConfigMapReady              string = "BucketConfigMapReady"
+	ReasonConfigMapNameConflict       string = "ConfigMapNameConflict"
+	ReasonOwnerKeySecretNotFound      string = "OwnerKeySecretNotFound"
+	ReasonOwnershipVerificationFailed string = "OwnershipVerificationFailed"
 )
 
 func initializeBucketConditions(b *garagev1alpha1.Bucket) {
@@ -75,7 +77,8 @@ func updateBucketReadyCondition(b *garagev1alpha1.Bucket) {
 	} else {
 		switch {
 		case bucketCond.Status == metav1.ConditionFalse:
-			// TODO: any bucket states other than waiting / ready?
+			readyReason = bucketCond.Reason
+			readyMessage = bucketCond.Message
 		case cmCond.Status == metav1.ConditionFalse:
 			readyReason = cmCond.Reason
 			readyMessage = cmCond.Message

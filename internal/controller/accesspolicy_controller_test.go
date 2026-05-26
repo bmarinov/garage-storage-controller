@@ -581,4 +581,3 @@ func setupPolicyTest() (*AccessPolicyReconciler, *permissionClientFake) {
 	apiClient := newPermissionClientFake()
 	return NewAccessPolicyReconciler(k8sClient, k8sClient.Scheme(), apiClient), apiClient
 }
-

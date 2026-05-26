@@ -123,11 +123,24 @@ func (r *BucketReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 }
 
 func (r *BucketReconciler) reconcileBucket(ctx context.Context, bucket *garagev1alpha1.Bucket) error {
-	s3Bucket, alias, err := r.resolveNewBucket(ctx, bucket)
-	if err != nil {
-		return err
+	var (
+		s3Bucket s3.Bucket
+		alias    string
+		err      error
+	)
+	if bucket.Spec.ExistingBucket != nil {
+		s3Bucket, alias, err = r.resolveExistingBucket(ctx, bucket)
+		if err != nil {
+			return nil // TODO: return sentinel and watch for Secret?
+		}
+	} else {
+		s3Bucket, alias, err = r.resolveNewBucket(ctx, bucket)
+		if err != nil {
+			return err
+		}
 	}
 
+	// TODO: status update behaviour differs between new and reclaim paths — handle separately
 	if bucket.Status.BucketID == "" {
 		bucket.Status.BucketID = s3Bucket.ID
 	}
@@ -283,6 +296,40 @@ func (r *BucketReconciler) resolveNewBucket(ctx context.Context, bucket *garagev
 		}
 	}
 	return s3Bucket, alias, nil
+}
+
+func (r *BucketReconciler) resolveExistingBucket(ctx context.Context, bucket *garagev1alpha1.Bucket) (s3.Bucket, string, error) {
+	spec := bucket.Spec.ExistingBucket
+
+	var secret corev1.Secret
+	err := r.client.Get(ctx, client.ObjectKey{Namespace: bucket.Namespace, Name: spec.OwnerKeySecret}, &secret)
+	if err != nil {
+		markBucketNotReady(bucket, ReasonOwnerKeySecretNotFound, "Secret %q not found: %v", spec.OwnerKeySecret, err)
+		return s3.Bucket{}, "", fmt.Errorf("get owner key secret: %w", err)
+	}
+	keyID := string(secret.Data[SecretKeyAccessKeyID])
+
+	s3Bucket, err := r.bucket.Get(ctx, spec.Name)
+	if err != nil {
+		markBucketNotReady(bucket, "BucketNotFound", "Bucket %q not found in Garage: %v", spec.Name, err)
+		return s3.Bucket{}, "", fmt.Errorf("get existing bucket: %w", err)
+	}
+
+	perms, err := r.ownership.GetPermissions(ctx, keyID, s3Bucket.ID)
+	if err != nil {
+		markBucketNotReady(bucket, ReasonOwnershipVerificationFailed, "Failed to verify ownership: %v", err)
+		return s3.Bucket{}, "", fmt.Errorf("verify ownership: %w", err)
+	}
+	if !perms.Owner {
+		markBucketNotReady(
+			bucket,
+			ReasonOwnershipVerificationFailed,
+			"Key %q does not have owner permission on bucket %q", keyID, spec.Name,
+		)
+		return s3.Bucket{}, "", fmt.Errorf("ownership check failed: key does not have owner permission")
+	}
+
+	return s3Bucket, spec.Name, nil
 }
 
 // suffixedResourceName extends a name with a suffix based on the resource UID.
