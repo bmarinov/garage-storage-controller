@@ -21,6 +21,7 @@ import (
 	"crypto/sha256"
 	"errors"
 	"fmt"
+	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/equality"
@@ -36,9 +37,7 @@ import (
 	"github.com/bmarinov/garage-storage-controller/internal/s3"
 )
 
-const (
-	bucketControllerName = "garage-storage-controller"
-)
+const bucketControllerName = "garage-storage-controller"
 
 const (
 	configMapKeyBucketName = "bucket-name"
@@ -108,7 +107,7 @@ func (r *BucketReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 	orig := bucket.Status.DeepCopy()
 	initializeBucketConditions(&bucket)
 
-	err = r.reconcileBucket(ctx, &bucket)
+	result, err := r.reconcileBucket(ctx, &bucket)
 	updateBucketReadyCondition(&bucket)
 
 	if !equality.Semantic.DeepEqual(*orig, bucket.Status) {
@@ -119,10 +118,10 @@ func (r *BucketReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 		}
 	}
 
-	return ctrl.Result{}, err
+	return result, err
 }
 
-func (r *BucketReconciler) reconcileBucket(ctx context.Context, bucket *garagev1alpha1.Bucket) error {
+func (r *BucketReconciler) reconcileBucket(ctx context.Context, bucket *garagev1alpha1.Bucket) (ctrl.Result, error) {
 	var (
 		s3Bucket s3.Bucket
 		alias    string
@@ -131,12 +130,12 @@ func (r *BucketReconciler) reconcileBucket(ctx context.Context, bucket *garagev1
 	if bucket.Spec.ExistingBucket != nil {
 		s3Bucket, alias, err = r.resolveExistingBucket(ctx, bucket)
 		if err != nil {
-			return nil // TODO: return sentinel and watch for Secret?
+			return ctrl.Result{RequeueAfter: ownerSecretBackoff(bucket)}, nil
 		}
 	} else {
 		s3Bucket, alias, err = r.resolveNewBucket(ctx, bucket)
 		if err != nil {
-			return err
+			return ctrl.Result{}, err
 		}
 	}
 
@@ -160,7 +159,7 @@ func (r *BucketReconciler) reconcileBucket(ctx context.Context, bucket *garagev1
 			markBucketNotReady(bucket,
 				"Update Failed",
 				"Failed to update bucket configuration: %v", err)
-			return fmt.Errorf("updating external bucket to spec: %w", err)
+			return ctrl.Result{}, fmt.Errorf("updating external bucket to spec: %w", err)
 		}
 	}
 	markBucketReady(bucket)
@@ -175,21 +174,35 @@ func (r *BucketReconciler) reconcileBucket(ctx context.Context, bucket *garagev1
 				"Unable to use existing ConfigMap for bucket details: %v",
 				err,
 			)
-			return nil
-		} else {
-			updateBucketCMCondition(bucket, metav1.ConditionFalse,
-				"ConfigMapCreateError",
-				"Unable to create ConfigMap: %v",
-				err,
-			)
-			return err
+			return ctrl.Result{}, nil
 		}
-	} else {
-		updateBucketCMCondition(bucket, metav1.ConditionTrue,
-			"ConfigMapReady", "ConfigMap with external bucket details is ready")
+		updateBucketCMCondition(bucket, metav1.ConditionFalse,
+			"ConfigMapCreateError",
+			"Unable to create ConfigMap: %v",
+			err,
+		)
+		return ctrl.Result{}, err
 	}
+	updateBucketCMCondition(bucket, metav1.ConditionTrue,
+		"ConfigMapReady", "ConfigMap with external bucket details is ready")
 
-	return r.deleteStaleConfigMap(ctx, *bucket)
+	return ctrl.Result{}, r.deleteStaleConfigMap(ctx, *bucket)
+}
+
+// ownerSecretBackoff returns fixed requeue intervals based on age.
+// TODO: compare against last reconcile and reuse for periodic full sync.
+func ownerSecretBackoff(b *garagev1alpha1.Bucket) time.Duration {
+	age := time.Since(b.CreationTimestamp.Time)
+	switch {
+	case age < 3*time.Minute:
+		return 30 * time.Second
+	case age < 10*time.Minute:
+		return 2 * time.Minute
+	case age < 30*time.Minute:
+		return 5 * time.Minute
+	default:
+		return 15 * time.Minute
+	}
 }
 
 // ensureConfigMap creates a new configmap for the bucket or updates the values in an existing one.
