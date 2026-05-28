@@ -299,7 +299,7 @@ func (r *BucketReconciler) resolveNewBucket(ctx context.Context, bucket *garagev
 			}
 		} else {
 			markBucketNotReady(bucket, "UnknownState", "S3 API error: %v", err)
-			return s3.Bucket{}, "", err
+			return s3.Bucket{}, "", fmt.Errorf("retrieving existing bucket: %w", err)
 		}
 	}
 	return s3Bucket, alias, nil

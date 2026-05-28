@@ -22,6 +22,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"sync"
 
 	"github.com/google/uuid"
 	. "github.com/onsi/ginkgo/v2"
@@ -619,6 +620,28 @@ var _ = Describe("Bucket Controller", func() {
 				Error().To(Satisfy(apierrors.IsNotFound))
 		})
 
+		It("sets Ready false when the referenced Garage bucket does not exist", func() {
+			By("creating a Secret with a key ID")
+			secret := keySecret(namespace, ownerKeyID)
+			Expect(k8sClient.Create(ctx, &secret)).To(Succeed())
+
+			By("creating a Bucket import for a non-existent Garage bucket")
+			bucket := newExistingBucketResource(namespace, secret.Name)
+			Expect(k8sClient.Create(ctx, &bucket)).To(Succeed())
+
+			sut, _, _ := setupBucket()
+			shouldReconcile(sut, bucket.ObjectMeta)
+
+			Expect(k8sClient.Get(ctx, namespacedName(bucket.ObjectMeta), &bucket)).To(Succeed())
+
+			By("BucketReady condition is False with correct reason")
+			Expect(checkCondition(bucket.Status.Conditions, BucketReady, metav1.ConditionFalse)).To(Succeed())
+			Expect(meta.FindStatusCondition(bucket.Status.Conditions, BucketReady).Reason).To(Equal("BucketNotFound"))
+
+			By("top-level Ready condition is False")
+			Expect(checkCondition(bucket.Status.Conditions, Ready, metav1.ConditionFalse)).To(Succeed())
+		})
+
 		It("sets Ready false with reason when the referenced Secret does not exist", func() {
 			existingBucketID := fixture.RandAlpha(12)
 
@@ -681,8 +704,15 @@ func newS3APIFake() *s3APIFake {
 }
 
 type s3APIFake struct {
-	// buckets by id
+	mu      sync.RWMutex
 	buckets map[string]s3.Bucket
+}
+
+// Seed adds a bucket directly, safe for concurrent use with the manager.
+func (s *s3APIFake) Seed(id string, bucket s3.Bucket) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.buckets[id] = bucket
 }
 
 // Create implements S3Client.
@@ -695,12 +725,16 @@ func (s *s3APIFake) Create(ctx context.Context, globalAlias string) (s3.Bucket, 
 		ID:            uuid.NewString(),
 		GlobalAliases: []string{globalAlias},
 	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	s.buckets[new.ID] = new
 	return new, nil
 }
 
 // Update implements S3Client.
 func (s *s3APIFake) Update(ctx context.Context, id string, quotas s3.Quotas) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	b, got := s.buckets[id]
 	if !got {
 		return s3.ErrResourceNotFound
@@ -715,6 +749,8 @@ func (s *s3APIFake) Update(ctx context.Context, id string, quotas s3.Quotas) err
 
 // Get implements S3Client.
 func (s *s3APIFake) Get(ctx context.Context, globalAlias string) (s3.Bucket, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	for _, v := range s.buckets {
 		if slices.Contains(v.GlobalAliases, globalAlias) {
 			return v, nil

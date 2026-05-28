@@ -67,10 +67,10 @@ var _ = Describe("Bucket controller manager", Ordered, func() {
 		ownerKeyID := fixture.RandAlpha(12)
 		garageBucketAlias := fixture.RandAlpha(12)
 
-		s3Fake.buckets[existingBucketID] = s3.Bucket{
+		s3Fake.Seed(existingBucketID, s3.Bucket{
 			ID:            existingBucketID,
 			GlobalAliases: []string{garageBucketAlias},
-		}
+		})
 
 		By("creating a Secret with insufficient permissions")
 		secretName := fixture.RandAlpha(8)
@@ -123,10 +123,10 @@ var _ = Describe("Bucket controller manager", Ordered, func() {
 		ownerKeyID := fixture.RandAlpha(12)
 		const garageBucketAlias = "garage-bucket-mgr-test"
 
-		s3Fake.buckets[existingBucketID] = s3.Bucket{
+		s3Fake.Seed(existingBucketID, s3.Bucket{
 			ID:            existingBucketID,
 			GlobalAliases: []string{garageBucketAlias},
-		}
+		})
 
 		By("creating Bucket CR for an existing Garage bucket")
 		secretName := fixture.RandAlpha(8)

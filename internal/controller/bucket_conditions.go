@@ -69,7 +69,11 @@ func updateBucketReadyCondition(b *garagev1alpha1.Bucket) {
 	bucketCond := meta.FindStatusCondition(b.Status.Conditions, BucketReady)
 	cmCond := meta.FindStatusCondition(b.Status.Conditions, BucketConfigMapReady)
 
-	if bucketCond != nil && bucketCond.Status == metav1.ConditionTrue &&
+	if bucketCond == nil || cmCond == nil {
+		return
+	}
+
+	if bucketCond.Status == metav1.ConditionTrue &&
 		cmCond.Status == metav1.ConditionTrue {
 		readyStat = metav1.ConditionTrue
 		readyReason = defaultReadyReason
