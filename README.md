@@ -162,6 +162,9 @@ See the [Garage Administration API](https://garagehq.deuxfleurs.fr/documentation
 
 ## Install with Helm
 
+The Helm chart oci bundle is at `oci://ghcr.io/bmarinov/charts/garage-storage-controller`.  
+See [chart/README.md](chart/README.md) for details on the available app and chart versions.
+
 ### Chart values
 
 Provide required configuration values:
