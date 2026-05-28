@@ -67,7 +67,7 @@ var _ = Describe("AccessPolicy Controller", func() {
 			if bucketExists {
 				b := garagev1alpha1.Bucket{
 					ObjectMeta: metav1.ObjectMeta{Name: bucketName, Namespace: namespace},
-					Spec:       garagev1alpha1.BucketSpec{Name: "blap-bucket3132"},
+					Spec:       garagev1alpha1.BucketSpec{Name: fixture.RandAlpha(12)},
 				}
 				Expect(k8sClient.Create(ctx, &b)).To(Succeed())
 
@@ -78,7 +78,7 @@ var _ = Describe("AccessPolicy Controller", func() {
 			if keyExists {
 				k := garagev1alpha1.AccessKey{
 					ObjectMeta: metav1.ObjectMeta{Name: accessKeyName, Namespace: namespace},
-					Spec:       garagev1alpha1.AccessKeySpec{SecretName: "zzz-ns-secret"},
+					Spec:       garagev1alpha1.AccessKeySpec{SecretName: fixture.RandAlpha(12)},
 				}
 				Expect(k8sClient.Create(ctx, &k)).To(Succeed())
 
@@ -90,7 +90,7 @@ var _ = Describe("AccessPolicy Controller", func() {
 
 			p := garagev1alpha1.AccessPolicy{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:      "testpolicy",
+					Name:      fixture.RandAlpha(6),
 					Namespace: namespace,
 				},
 				Spec: garagev1alpha1.AccessPolicySpec{
@@ -133,7 +133,7 @@ var _ = Describe("AccessPolicy Controller", func() {
 			By("creating upstream resources")
 			b := garagev1alpha1.Bucket{
 				ObjectMeta: metav1.ObjectMeta{Name: bucketName, Namespace: namespace},
-				Spec:       garagev1alpha1.BucketSpec{Name: "blap-bucket3132"},
+				Spec:       garagev1alpha1.BucketSpec{Name: fixture.RandAlpha(12)},
 			}
 			Expect(k8sClient.Create(ctx, &b)).To(Succeed())
 
@@ -149,7 +149,7 @@ var _ = Describe("AccessPolicy Controller", func() {
 
 			k := garagev1alpha1.AccessKey{
 				ObjectMeta: metav1.ObjectMeta{Name: accessKeyName, Namespace: namespace},
-				Spec:       garagev1alpha1.AccessKeySpec{SecretName: "zzz-ns-secret"},
+				Spec:       garagev1alpha1.AccessKeySpec{SecretName: fixture.RandAlpha(12)},
 			}
 			Expect(k8sClient.Create(ctx, &k)).To(Succeed())
 
@@ -165,7 +165,7 @@ var _ = Describe("AccessPolicy Controller", func() {
 			By("creating policy")
 			p := garagev1alpha1.AccessPolicy{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:      "testpolicy",
+					Name:      fixture.RandAlpha(6),
 					Namespace: namespace,
 				},
 				Spec: garagev1alpha1.AccessPolicySpec{
@@ -217,7 +217,7 @@ var _ = Describe("AccessPolicy Controller", func() {
 
 			keyRes := garagev1alpha1.AccessKey{
 				ObjectMeta: metav1.ObjectMeta{Name: accessKeyName, Namespace: namespace},
-				Spec:       garagev1alpha1.AccessKeySpec{SecretName: "zzz-ns-secret"},
+				Spec:       garagev1alpha1.AccessKeySpec{SecretName: fixture.RandAlpha(12)},
 			}
 			Expect(k8sClient.Create(ctx, &keyRes)).To(Succeed())
 			keyCtrl, _ := setup()
@@ -231,7 +231,7 @@ var _ = Describe("AccessPolicy Controller", func() {
 			By("creating a referencing policy")
 			policy := garagev1alpha1.AccessPolicy{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:      "testpolicy",
+					Name:      fixture.RandAlpha(6),
 					Namespace: namespace,
 				},
 				Spec: garagev1alpha1.AccessPolicySpec{
@@ -283,7 +283,7 @@ var _ = Describe("AccessPolicy Controller", func() {
 			accessKeyName := fixture.RandAlpha(12)
 			b := garagev1alpha1.Bucket{
 				ObjectMeta: metav1.ObjectMeta{Name: bucketName, Namespace: namespace},
-				Spec:       garagev1alpha1.BucketSpec{Name: "blap-bucket3132"},
+				Spec:       garagev1alpha1.BucketSpec{Name: fixture.RandAlpha(12)},
 			}
 			_ = k8sClient.Create(ctx, &b)
 
@@ -293,7 +293,7 @@ var _ = Describe("AccessPolicy Controller", func() {
 
 			k := garagev1alpha1.AccessKey{
 				ObjectMeta: metav1.ObjectMeta{Name: accessKeyName, Namespace: namespace},
-				Spec:       garagev1alpha1.AccessKeySpec{SecretName: "zzz-ns-secret"},
+				Spec:       garagev1alpha1.AccessKeySpec{SecretName: fixture.RandAlpha(12)},
 			}
 			_ = k8sClient.Create(ctx, &k)
 			keyCtrl, _ := setup()
@@ -307,7 +307,7 @@ var _ = Describe("AccessPolicy Controller", func() {
 			By("creating access policy for bucket")
 			policy := garagev1alpha1.AccessPolicy{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:      "testpolicy",
+					Name:      fixture.RandAlpha(6),
 					Namespace: namespace,
 				},
 				Spec: garagev1alpha1.AccessPolicySpec{

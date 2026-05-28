@@ -21,7 +21,7 @@ jobs:
       - name: Run linter
         uses: golangci/golangci-lint-action@v8
         with:
-          version: v2.9.0
+          version: v2.12.2
         continue-on-error: true
 
       - name: Run govulncheck

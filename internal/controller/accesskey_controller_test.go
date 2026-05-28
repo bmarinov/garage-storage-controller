@@ -44,13 +44,9 @@ var _ = Describe("AccessKey Controller", func() {
 
 		ctx := context.Background()
 
-		typeNamespacedName := types.NamespacedName{
-			Name:      resourceName,
-			Namespace: "default",
-		}
-
-		// namespace generated for the test.
+		// namespace generated for every test.
 		var namespace string
+		var typeNamespacedName types.NamespacedName
 
 		BeforeEach(func() {
 			By("setting up namespace")
@@ -62,24 +58,22 @@ var _ = Describe("AccessKey Controller", func() {
 			}
 			Expect(k8sClient.Create(ctx, &testNs)).To(Succeed())
 
-			By("creating the custom resource for the Kind AccessKey")
-			accesskey := &garagev1alpha1.AccessKey{}
-			err := k8sClient.Get(ctx, typeNamespacedName, accesskey)
-			if err != nil && apierrors.IsNotFound(err) {
-				resource := &garagev1alpha1.AccessKey{
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      resourceName,
-						Namespace: "default",
-					},
-					Spec: garagev1alpha1.AccessKeySpec{
-						SecretName: "some-ns-secret",
-					},
-				}
-				Expect(k8sClient.Create(ctx, resource)).To(Succeed())
-			} else if err != nil {
-				panic(err)
+			typeNamespacedName = types.NamespacedName{
+				Name:      resourceName,
+				Namespace: namespace,
 			}
 
+			By("creating the custom resource for the Kind AccessKey")
+			resource := &garagev1alpha1.AccessKey{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      resourceName,
+					Namespace: namespace,
+				},
+				Spec: garagev1alpha1.AccessKeySpec{
+					SecretName: "some-ns-secret",
+				},
+			}
+			Expect(k8sClient.Create(ctx, resource)).To(Succeed())
 		})
 
 		AfterEach(func() {
@@ -209,7 +203,7 @@ var _ = Describe("AccessKey Controller", func() {
 			oldKeyRes := garagev1alpha1.AccessKey{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "recreate-resource-foo",
-					Namespace: "default",
+					Namespace: namespace,
 				},
 				Spec: garagev1alpha1.AccessKeySpec{
 					SecretName: commonSecretName,
@@ -283,7 +277,7 @@ var _ = Describe("AccessKey Controller", func() {
 			accessKey := garagev1alpha1.AccessKey{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "reconcile-after-create",
-					Namespace: "default",
+					Namespace: namespace,
 				},
 				Spec: garagev1alpha1.AccessKeySpec{
 					SecretName: "f61xg",
@@ -353,7 +347,7 @@ var _ = Describe("AccessKey Controller", func() {
 			accessKey := garagev1alpha1.AccessKey{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "key-went-poof",
-					Namespace: "default",
+					Namespace: namespace,
 				},
 				Spec: garagev1alpha1.AccessKeySpec{
 					SecretName: "5zbrapp",
