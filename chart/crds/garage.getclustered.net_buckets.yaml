@@ -51,28 +51,6 @@ spec:
                 minLength: 1
                 pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
                 type: string
-              existingBucket:
-                description: |-
-                  ExistingBucket identifies a pre-existing Garage bucket to import or reclaim.
-                  Mutually exclusive with Name.
-                properties:
-                  name:
-                    description: Name is the exact bucket name as it exists in Garage.
-                    maxLength: 63
-                    minLength: 3
-                    type: string
-                  ownerKeySecret:
-                    description: |-
-                      OwnerKeySecret is the name of a Secret containing a Garage access key
-                      with owner permission on the bucket.
-                    maxLength: 253
-                    minLength: 1
-                    pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
-                    type: string
-                required:
-                - name
-                - ownerKeySecret
-                type: object
               maxObjects:
                 description: MaxObjects is the number of objects the bucket can store.
                 format: int64
@@ -97,15 +75,11 @@ spec:
                 minLength: 3
                 type: string
                 x-kubernetes-validations:
-                - message: spec.name is immutable
+                - message: Value is immutable
                   rule: self == oldSelf
+            required:
+            - name
             type: object
-            x-kubernetes-validations:
-            - message: exactly one of spec.name or spec.existingBucket must be set
-              rule: (has(self.name) && size(self.name) > 0) != has(self.existingBucket)
-            - message: spec.existingBucket.name is immutable
-              rule: '!has(self.existingBucket) || !has(oldSelf.existingBucket) ||
-                self.existingBucket.name == oldSelf.existingBucket.name'
           status:
             description: status defines the observed state of Bucket
             properties:
