@@ -2,6 +2,7 @@ package controller
 
 import (
 	"context"
+	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -46,8 +47,9 @@ var _ = Describe("Bucket controller manager", Ordered, func() {
 		})
 		Expect(err).ToNot(HaveOccurred())
 
-		Expect(NewBucketReconciler(mgr.GetClient(), mgr.GetScheme(), s3Fake, "http://s3.bar.com", permissionsClient).
-			SetupWithManager(mgr)).To(Succeed())
+		r := NewBucketReconciler(mgr.GetClient(), mgr.GetScheme(), s3Fake, "http://s3.bar.com", permissionsClient)
+		r.baseRequeueInterval = time.Second
+		Expect(r.SetupWithManager(mgr)).To(Succeed())
 
 		go func() {
 			defer GinkgoRecover()
@@ -58,6 +60,62 @@ var _ = Describe("Bucket controller manager", Ordered, func() {
 	AfterAll(func() {
 		cancel()
 		_ = k8sClient.Delete(ctx, &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: namespace}})
+	})
+
+	It("existing bucket eventually Ready after owner permissions are fixed", func() {
+		existingBucketID := fixture.RandAlpha(12)
+		ownerKeyID := fixture.RandAlpha(12)
+		garageBucketAlias := fixture.RandAlpha(12)
+
+		s3Fake.buckets[existingBucketID] = s3.Bucket{
+			ID:            existingBucketID,
+			GlobalAliases: []string{garageBucketAlias},
+		}
+
+		By("creating a Secret with insufficient permissions")
+		secretName := fixture.RandAlpha(8)
+		Expect(permissionsClient.SetPermissions(ctx, ownerKeyID, existingBucketID,
+			s3.Permissions{Owner: false, Read: true})).To(Succeed())
+		Expect(k8sClient.Create(ctx, &corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{Name: secretName, Namespace: namespace},
+			Data: map[string][]byte{
+				SecretKeyAccessKeyID:     []byte(ownerKeyID),
+				SecretKeySecretAccessKey: []byte(fixture.RandAlpha(12)),
+			},
+		})).To(Succeed())
+
+		By("creating Bucket CR for an existing Garage bucket")
+		bucket := garagev1alpha1.Bucket{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      fixture.RandAlpha(8),
+				Namespace: namespace,
+			},
+			Spec: garagev1alpha1.BucketSpec{
+				ExistingBucket: &garagev1alpha1.ExistingBucketSpec{
+					Name:           garageBucketAlias,
+					OwnerKeySecret: secretName,
+				},
+			},
+		}
+		Expect(k8sClient.Create(ctx, &bucket)).To(Succeed())
+
+		By("Bucket is not Ready due to insufficient permissions")
+		Eventually(func(g Gomega) {
+			g.Expect(k8sClient.Get(ctx, namespacedName(bucket.ObjectMeta), &bucket)).To(Succeed())
+			g.Expect(checkCondition(bucket.Status.Conditions, BucketReady, metav1.ConditionFalse)).To(Succeed())
+			g.Expect(meta.FindStatusCondition(bucket.Status.Conditions, BucketReady).Reason).
+				To(Equal(ReasonOwnershipVerificationFailed))
+		}).Should(Succeed())
+
+		By("granting owner permissions")
+		Expect(permissionsClient.SetPermissions(ctx, ownerKeyID, existingBucketID,
+			s3.Permissions{Owner: true, Read: true, Write: true})).To(Succeed())
+
+		By("Bucket eventually becomes Ready")
+		Eventually(func(g Gomega) {
+			g.Expect(k8sClient.Get(ctx, namespacedName(bucket.ObjectMeta), &bucket)).To(Succeed())
+			g.Expect(checkCondition(bucket.Status.Conditions, Ready, metav1.ConditionTrue)).To(Succeed())
+		}, "20s").Should(Succeed())
 	})
 
 	It("existing bucket eventually Ready after missing owner key Secret is created", func() {

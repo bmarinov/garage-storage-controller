@@ -55,6 +55,8 @@ type OwnershipVerifier interface {
 	GetPermissions(ctx context.Context, keyID, bucketID string) (s3.Permissions, error)
 }
 
+const maxRequeueInterval = 15 * time.Minute
+
 // BucketReconciler reconciles a Bucket object
 type BucketReconciler struct {
 	client        client.Client
@@ -62,6 +64,8 @@ type BucketReconciler struct {
 	bucket        BucketClient
 	s3APIEndpoint string
 	ownership     OwnershipVerifier
+	// baseRequeueInterval to override in tests. Base delay for the exponential backoff.
+	baseRequeueInterval time.Duration
 }
 
 func NewBucketReconciler(
@@ -72,11 +76,12 @@ func NewBucketReconciler(
 	ownershipVerifier OwnershipVerifier,
 ) *BucketReconciler {
 	return &BucketReconciler{
-		client:        apiClient,
-		Scheme:        scheme,
-		bucket:        s3Client,
-		s3APIEndpoint: s3APIEndpoint,
-		ownership:     ownershipVerifier,
+		client:              apiClient,
+		Scheme:              scheme,
+		bucket:              s3Client,
+		s3APIEndpoint:       s3APIEndpoint,
+		ownership:           ownershipVerifier,
+		baseRequeueInterval: 5 * time.Second,
 	}
 }
 
@@ -130,7 +135,13 @@ func (r *BucketReconciler) reconcileBucket(ctx context.Context, bucket *garagev1
 	if bucket.Spec.ExistingBucket != nil {
 		s3Bucket, alias, err = r.resolveExistingBucket(ctx, bucket)
 		if err != nil {
-			return ctrl.Result{RequeueAfter: ownerSecretBackoff(bucket)}, nil
+			// TODO: distinguish between:
+			// - namespace Secret not found (base, exponential backoff)
+			// - no ownership (max interval?)
+			// - Garage key not found (key deleted, skip backoff)
+			return ctrl.Result{
+				RequeueAfter: ownerSecretBackoff(time.Since(bucket.CreationTimestamp.Time), r.baseRequeueInterval, maxRequeueInterval),
+			}, nil
 		}
 	} else {
 		s3Bucket, alias, err = r.resolveNewBucket(ctx, bucket)
@@ -139,7 +150,6 @@ func (r *BucketReconciler) reconcileBucket(ctx context.Context, bucket *garagev1
 		}
 	}
 
-	// TODO: status update behaviour differs between new and reclaim paths — handle separately
 	if bucket.Status.BucketID == "" {
 		bucket.Status.BucketID = s3Bucket.ID
 	}
@@ -187,22 +197,6 @@ func (r *BucketReconciler) reconcileBucket(ctx context.Context, bucket *garagev1
 		"ConfigMapReady", "ConfigMap with external bucket details is ready")
 
 	return ctrl.Result{}, r.deleteStaleConfigMap(ctx, *bucket)
-}
-
-// ownerSecretBackoff returns fixed requeue intervals based on age.
-// TODO: compare against last reconcile and reuse for periodic full sync.
-func ownerSecretBackoff(b *garagev1alpha1.Bucket) time.Duration {
-	age := time.Since(b.CreationTimestamp.Time)
-	switch {
-	case age < 3*time.Minute:
-		return 30 * time.Second
-	case age < 10*time.Minute:
-		return 2 * time.Minute
-	case age < 30*time.Minute:
-		return 5 * time.Minute
-	default:
-		return 15 * time.Minute
-	}
 }
 
 // ensureConfigMap creates a new configmap for the bucket or updates the values in an existing one.

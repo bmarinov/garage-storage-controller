@@ -646,7 +646,7 @@ spec:
 					"-n", testNamespace,
 					"--for=condition=Ready", "--timeout=1s")
 				g.Expect(cmd.Run()).To(Succeed())
-			}).Should(Succeed())
+			}, "45s").Should(Succeed())
 		})
 
 		AfterAll(func() {
