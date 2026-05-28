@@ -12,6 +12,7 @@ import (
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/config"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
 	garagev1alpha1 "github.com/bmarinov/garage-storage-controller/api/v1alpha1"
@@ -36,15 +37,17 @@ var _ = Describe("AccessPolicy controller manager", Ordered, func() {
 		apiClient = newPermissionClientFake()
 		mCtx, cancel = context.WithCancel(context.Background())
 
+		skipValidation := true
 		mgr, err := ctrl.NewManager(cfg, ctrl.Options{
 			Scheme:                 clientgoscheme.Scheme,
 			Metrics:                metricsserver.Options{BindAddress: "0"},
 			HealthProbeBindAddress: "0",
+			Controller:             config.Controller{SkipNameValidation: &skipValidation},
 		})
 		Expect(err).ToNot(HaveOccurred())
 
 		// sync with manager setup in main:
-		Expect(NewBucketReconciler(mgr.GetClient(), mgr.GetScheme(), newS3APIFake(), "http://s3.test.foo").
+		Expect(NewBucketReconciler(mgr.GetClient(), mgr.GetScheme(), newS3APIFake(), "http://s3.test.foo", nil).
 			SetupWithManager(mgr)).To(Succeed())
 		Expect(NewAccessKeyReconciler(mgr.GetClient(), mgr.GetScheme(), newAccessMgrFake()).
 			SetupWithManager(mgr)).To(Succeed())

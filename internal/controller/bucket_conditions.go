@@ -9,9 +9,11 @@ import (
 )
 
 const (
-	BucketReady                 string = "BucketReady"
-	BucketConfigMapReady        string = "BucketConfigMapReady"
-	ReasonConfigMapNameConflict string = "ConfigMapNameConflict"
+	BucketReady                       string = "BucketReady"
+	BucketConfigMapReady              string = "BucketConfigMapReady"
+	ReasonConfigMapNameConflict       string = "ConfigMapNameConflict"
+	ReasonOwnerKeySecretNotFound      string = "OwnerKeySecretNotFound"
+	ReasonOwnershipVerificationFailed string = "OwnershipVerificationFailed"
 )
 
 func initializeBucketConditions(b *garagev1alpha1.Bucket) {
@@ -67,7 +69,11 @@ func updateBucketReadyCondition(b *garagev1alpha1.Bucket) {
 	bucketCond := meta.FindStatusCondition(b.Status.Conditions, BucketReady)
 	cmCond := meta.FindStatusCondition(b.Status.Conditions, BucketConfigMapReady)
 
-	if bucketCond != nil && bucketCond.Status == metav1.ConditionTrue &&
+	if bucketCond == nil || cmCond == nil {
+		return
+	}
+
+	if bucketCond.Status == metav1.ConditionTrue &&
 		cmCond.Status == metav1.ConditionTrue {
 		readyStat = metav1.ConditionTrue
 		readyReason = defaultReadyReason
@@ -75,7 +81,8 @@ func updateBucketReadyCondition(b *garagev1alpha1.Bucket) {
 	} else {
 		switch {
 		case bucketCond.Status == metav1.ConditionFalse:
-			// TODO: any bucket states other than waiting / ready?
+			readyReason = bucketCond.Reason
+			readyMessage = bucketCond.Message
 		case cmCond.Status == metav1.ConditionFalse:
 			readyReason = cmCond.Reason
 			readyMessage = cmCond.Message

@@ -28,8 +28,9 @@ type AccessKeyResponse struct {
 }
 
 type KeyInfoBucketResponse struct {
-	ID          string        `json:"id"`
-	Permissions BucketKeyPerm `json:"permissions"`
+	ID            string        `json:"id"`
+	GlobalAliases []string      `json:"globalAliases"`
+	Permissions   BucketKeyPerm `json:"permissions"`
 }
 
 type AllowBucketKeyRequest struct {

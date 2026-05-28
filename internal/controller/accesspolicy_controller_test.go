@@ -71,7 +71,7 @@ var _ = Describe("AccessPolicy Controller", func() {
 				}
 				Expect(k8sClient.Create(ctx, &b)).To(Succeed())
 
-				bucketController, _ := setupBucket()
+				bucketController, _, _ := setupBucket()
 				Expect(bucketController.Reconcile(ctx, reconcile.Request{NamespacedName: namespacedName(b.ObjectMeta)})).
 					Error().ToNot(HaveOccurred())
 			}
@@ -138,7 +138,7 @@ var _ = Describe("AccessPolicy Controller", func() {
 			Expect(k8sClient.Create(ctx, &b)).To(Succeed())
 
 			if bucketReady {
-				bucketController, _ := setupBucket()
+				bucketController, _, _ := setupBucket()
 				Expect(bucketController.Reconcile(ctx, reconcile.Request{NamespacedName: namespacedName(b.ObjectMeta)})).
 					Error().ToNot(HaveOccurred())
 			} else {
@@ -211,7 +211,7 @@ var _ = Describe("AccessPolicy Controller", func() {
 				Spec:       garagev1alpha1.BucketSpec{Name: fixture.RandAlpha(8)},
 			}
 			Expect(k8sClient.Create(ctx, &bucketRes)).To(Succeed())
-			bucketController, _ := setupBucket()
+			bucketController, _, _ := setupBucket()
 			Expect(bucketController.Reconcile(ctx, reconcile.Request{NamespacedName: namespacedName(bucketRes.ObjectMeta)})).
 				Error().ToNot(HaveOccurred())
 
@@ -287,7 +287,7 @@ var _ = Describe("AccessPolicy Controller", func() {
 			}
 			_ = k8sClient.Create(ctx, &b)
 
-			bucketController, _ := setupBucket()
+			bucketController, _, _ := setupBucket()
 			Expect(bucketController.Reconcile(ctx, reconcile.Request{NamespacedName: namespacedName(b.ObjectMeta)})).
 				Error().ToNot(HaveOccurred())
 
@@ -355,7 +355,7 @@ var _ = Describe("AccessPolicy Controller", func() {
 				Spec:       garagev1alpha1.BucketSpec{Name: fixture.RandAlpha(8)},
 			}
 			_ = k8sClient.Create(ctx, &b)
-			bucketController, _ := setupBucket()
+			bucketController, _, _ := setupBucket()
 			Expect(bucketController.Reconcile(ctx, reconcile.Request{NamespacedName: namespacedName(b.ObjectMeta)})).
 				Error().ToNot(HaveOccurred())
 
@@ -425,7 +425,7 @@ var _ = Describe("AccessPolicy Controller", func() {
 				Spec:       garagev1alpha1.BucketSpec{Name: fixture.RandAlpha(8)},
 			}
 			Expect(k8sClient.Create(ctx, &b)).To(Succeed())
-			bucketController, _ := setupBucket()
+			bucketController, _, _ := setupBucket()
 			Expect(bucketController.Reconcile(ctx, reconcile.Request{NamespacedName: namespacedName(b.ObjectMeta)})).
 				Error().ToNot(HaveOccurred())
 			Expect(k8sClient.Get(ctx, namespacedName(b.ObjectMeta), &b)).To(Succeed())
@@ -505,7 +505,7 @@ var _ = Describe("AccessPolicy Controller", func() {
 				Spec:       garagev1alpha1.BucketSpec{Name: fixture.RandAlpha(8)},
 			}
 			Expect(k8sClient.Create(ctx, &b)).To(Succeed())
-			bucketController, _ := setupBucket()
+			bucketController, _, _ := setupBucket()
 			Expect(bucketController.Reconcile(ctx, reconcile.Request{NamespacedName: namespacedName(b.ObjectMeta)})).
 				Error().ToNot(HaveOccurred())
 			Expect(k8sClient.Get(ctx, namespacedName(b.ObjectMeta), &b)).To(Succeed())
@@ -581,22 +581,3 @@ func setupPolicyTest() (*AccessPolicyReconciler, *permissionClientFake) {
 	apiClient := newPermissionClientFake()
 	return NewAccessPolicyReconciler(k8sClient, k8sClient.Scheme(), apiClient), apiClient
 }
-
-type permissionClientFake struct {
-	assignedPermissions map[string]s3.Permissions
-}
-
-func newPermissionClientFake() *permissionClientFake {
-	return &permissionClientFake{
-		assignedPermissions: make(map[string]s3.Permissions),
-	}
-}
-
-// SetPermissions implements PermissionClient.
-func (p *permissionClientFake) SetPermissions(ctx context.Context, keyID string, bucketID string, permissions s3.Permissions) error {
-	key := fmt.Sprintf("%s:%s", keyID, bucketID)
-	p.assignedPermissions[key] = permissions
-	return nil
-}
-
-var _ PermissionClient = &permissionClientFake{}

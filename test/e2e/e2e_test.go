@@ -33,6 +33,7 @@ import (
 
 	"github.com/bmarinov/garage-storage-controller/internal/garage"
 	"github.com/bmarinov/garage-storage-controller/internal/garage/integrationtests"
+	"github.com/bmarinov/garage-storage-controller/internal/s3"
 	"github.com/bmarinov/garage-storage-controller/internal/tests"
 	"github.com/bmarinov/garage-storage-controller/test/e2e/utils"
 )
@@ -529,6 +530,131 @@ resources:
 			}
 			_ = os.RemoveAll(overlayDir)
 
+			if portForwardCmd != nil && portForwardCmd.Process != nil {
+				_ = portForwardCmd.Process.Kill()
+			}
+		})
+	})
+
+	Context("reclaiming an existing Garage bucket", Ordered, func() {
+		var (
+			garageClient      *garage.AdminClient
+			portForwardCmd    *exec.Cmd
+			testNamespace     string
+			overlayDir        string
+			garageBucketAlias string
+			ownerKeyID        string
+		)
+
+		const (
+			ownerSecretName = "owner-key"
+			bucketCRName    = "reclaim-test"
+		)
+
+		BeforeAll(func() {
+			By("reading Garage admin token from secret")
+			cmd := exec.Command("kubectl", "get", "secret", garageAPISecret,
+				"-n", garageNamespace,
+				"-o", "jsonpath={.data.api-token}")
+			tokenBase64, err := utils.Run(cmd)
+			Expect(err).ToNot(HaveOccurred())
+			tokenBytes, err := base64.StdEncoding.DecodeString(strings.TrimSpace(tokenBase64))
+			Expect(err).ToNot(HaveOccurred())
+
+			By("port forwarding admin API")
+			portForwardCmd = exec.Command("kubectl", "port-forward",
+				"pod/garage-0", "13904:3903",
+				"-n", garageNamespace)
+			Expect(portForwardCmd.Start()).To(Succeed())
+			garageClient = garage.NewClient("http://localhost:13904", string(tokenBytes))
+			Eventually(func(g Gomega) {
+				conn, err := net.DialTimeout("tcp", "localhost:13904", time.Second)
+				g.Expect(err).ToNot(HaveOccurred())
+				_ = conn.Close()
+			}).Should(Succeed())
+
+			By("creating test namespace and RBAC for controller access")
+			overlayDir, err = os.MkdirTemp("config/rbac/namespaces", "e2e-")
+			Expect(err).ToNot(HaveOccurred())
+			testNamespace = filepath.Base(overlayDir)
+			kustomization := fmt.Sprintf(`apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: %s
+resources:
+- ../base
+`, testNamespace)
+			Expect(os.WriteFile(filepath.Join(overlayDir, "kustomization.yaml"), []byte(kustomization), 0600)).To(Succeed())
+			cmd = exec.Command("kubectl", "create", "ns", testNamespace)
+			_, err = utils.Run(cmd)
+			Expect(err).ToNot(HaveOccurred())
+			cmd = exec.Command("kubectl", "apply", "-k", overlayDir)
+			_, err = utils.Run(cmd)
+			Expect(err).ToNot(HaveOccurred())
+
+			By("creating a bucket and owner key in Garage")
+			gctx := context.Background()
+			garageBucketAlias = "e2e-" + integrationtests.GenerateRandomString(hex.EncodeToString)[:8]
+			_, err = garageClient.BucketClient.Create(gctx, garageBucketAlias)
+			Expect(err).ToNot(HaveOccurred())
+
+			ownerKey, err := garageClient.AccessKeyClient.Create(gctx, "e2e-owner-key")
+			Expect(err).ToNot(HaveOccurred())
+			ownerKeyID = ownerKey.ID
+
+			garageBucket, err := garageClient.BucketClient.Get(gctx, garageBucketAlias)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(garageClient.PermissionClient.SetPermissions(gctx, ownerKeyID, garageBucket.ID,
+				s3.Permissions{Owner: true, Read: true, Write: true})).To(Succeed())
+		})
+
+		It("eventually becomes Ready after Secret with owner key is created", func() {
+			By("creating resource for existing Garage bucket")
+			manifest := fmt.Sprintf(`apiVersion: garage.getclustered.net/v1alpha1
+kind: Bucket
+metadata:
+  name: %s
+spec:
+  existingBucket:
+    name: %s
+    ownerKeySecret: %s
+`, bucketCRName, garageBucketAlias, ownerSecretName)
+			cmd := exec.Command("kubectl", "apply", "-f", "-", "-n", testNamespace)
+			cmd.Stdin = strings.NewReader(manifest)
+			_, err := utils.Run(cmd)
+			Expect(err).ToNot(HaveOccurred())
+
+			By("Bucket is not Ready")
+			Eventually(func(g Gomega) {
+				cmd := exec.Command("kubectl", "get", "bucket", bucketCRName,
+					"-n", testNamespace,
+					"-o", `jsonpath={.status.conditions[?(@.type=="Ready")].status}`)
+				output, err := utils.Run(cmd)
+				g.Expect(err).ToNot(HaveOccurred())
+				g.Expect(strings.TrimSpace(output)).To(Equal("False"))
+			}).Should(Succeed())
+
+			By("creating the owner Secret")
+			cmd = exec.Command("kubectl", "create", "secret", "generic", ownerSecretName,
+				fmt.Sprintf("--from-literal=access-key-id=%s", ownerKeyID),
+				"-n", testNamespace)
+			_, err = utils.Run(cmd)
+			Expect(err).ToNot(HaveOccurred())
+
+			By("Bucket becomes Ready")
+			Eventually(func(g Gomega) {
+				cmd := exec.Command("kubectl", "wait", "bucket", bucketCRName,
+					"-n", testNamespace,
+					"--for=condition=Ready", "--timeout=1s")
+				g.Expect(cmd.Run()).To(Succeed())
+			}, "45s").Should(Succeed())
+		})
+
+		AfterAll(func() {
+			if testNamespace != "" {
+				cmd := exec.Command("kubectl", "delete", "ns", testNamespace, "--wait=false")
+				_, _ = utils.Run(cmd)
+			}
+			_ = os.RemoveAll(overlayDir)
 			if portForwardCmd != nil && portForwardCmd.Process != nil {
 				_ = portForwardCmd.Process.Kill()
 			}

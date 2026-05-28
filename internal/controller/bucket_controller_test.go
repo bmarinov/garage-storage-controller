@@ -22,6 +22,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"sync"
 
 	"github.com/google/uuid"
 	. "github.com/onsi/ginkgo/v2"
@@ -64,7 +65,7 @@ var _ = Describe("Bucket Controller", func() {
 			By("reconciling")
 			var s3Fake = newS3APIFake()
 			s3Endpoint := "https://foo.bar:3456/baz"
-			controllerReconciler := NewBucketReconciler(k8sClient, k8sClient.Scheme(), s3Fake, s3Endpoint)
+			controllerReconciler := NewBucketReconciler(k8sClient, k8sClient.Scheme(), s3Fake, s3Endpoint, nil)
 
 			_, err := controllerReconciler.Reconcile(ctx,
 				reconcile.Request{NamespacedName: namespacedName(bucket.ObjectMeta)})
@@ -108,7 +109,7 @@ var _ = Describe("Bucket Controller", func() {
 			Expect(k8sClient.Create(ctx, &resource)).To(Succeed())
 			var s3Fake = newS3APIFake()
 			s3API := "https://s3.test.fooz:3909"
-			sut := NewBucketReconciler(k8sClient, k8sClient.Scheme(), s3Fake, s3API)
+			sut := NewBucketReconciler(k8sClient, k8sClient.Scheme(), s3Fake, s3API, nil)
 
 			// Note: need to reconcile with Eventually once finalizer is added:
 			_, err := sut.Reconcile(ctx,
@@ -136,7 +137,7 @@ var _ = Describe("Bucket Controller", func() {
 			resource.Spec.ConfigMapName = "bucket-config"
 			Expect(k8sClient.Create(ctx, &resource)).To(Succeed())
 
-			sut, _ := setupBucket()
+			sut, _, _ := setupBucket()
 			Expect(sut.Reconcile(ctx, reconcile.Request{
 				NamespacedName: namespacedName(resource.ObjectMeta),
 			})).Error().ToNot(HaveOccurred())
@@ -154,7 +155,7 @@ var _ = Describe("Bucket Controller", func() {
 			bucket.Spec.ConfigMapName = "blappers-config"
 			Expect(k8sClient.Create(ctx, &bucket)).To(Succeed())
 
-			sut, _ := setupBucket()
+			sut, _, _ := setupBucket()
 			By("reconciling with old CM name")
 			Expect(sut.Reconcile(ctx, reconcile.Request{
 				NamespacedName: namespacedName(bucket.ObjectMeta),
@@ -200,7 +201,7 @@ var _ = Describe("Bucket Controller", func() {
 			By("create Bucket with conflicting ConfigMap name")
 			Expect(k8sClient.Create(ctx, &bucket)).To(Succeed())
 
-			sut, _ := setupBucket()
+			sut, _, _ := setupBucket()
 			_, err := sut.Reconcile(ctx, reconcile.Request{NamespacedName: namespacedName(bucket.ObjectMeta)})
 			Expect(err).ToNot(HaveOccurred(), "no error in conflict state, should not retry")
 
@@ -241,7 +242,7 @@ var _ = Describe("Bucket Controller", func() {
 			bucket.Name = conflictingName
 			Expect(k8sClient.Create(ctx, &bucket)).Should(Succeed())
 
-			sut, _ := setupBucket()
+			sut, _, _ := setupBucket()
 			shouldReconcile(sut, bucket.ObjectMeta)
 
 			By("bucket is not ready")
@@ -278,7 +279,7 @@ var _ = Describe("Bucket Controller", func() {
 				_ = k8sClient.Delete(ctx, &bucket)
 			})
 
-			sut, s3API := setupBucket()
+			sut, s3API, _ := setupBucket()
 
 			By("simulating reconcile error after external bucket creation")
 			existing := s3.Bucket{
@@ -327,7 +328,7 @@ var _ = Describe("Bucket Controller", func() {
 				_ = k8sClient.Delete(ctx, &initial)
 			})
 
-			sut, s3API := setupBucket()
+			sut, s3API, _ := setupBucket()
 
 			By("reconciling")
 			objID := namespacedName(initial.ObjectMeta)
@@ -355,7 +356,7 @@ var _ = Describe("Bucket Controller", func() {
 			Expect(k8sClient.Create(ctx, &bucket)).To(Succeed())
 
 			By("reconciling initial create")
-			sut, _ := setupBucket()
+			sut, _, _ := setupBucket()
 			Expect(sut.Reconcile(ctx, reconcile.Request{NamespacedName: namespacedName(bucket.ObjectMeta)})).
 				Error().ToNot(HaveOccurred())
 
@@ -421,6 +422,252 @@ var _ = Describe("Bucket Controller", func() {
 			Entry("too short", "ab", false),
 			Entry("starts with hyphen", "-invalid", false),
 		)
+
+		DescribeTable("validates existingBucket field combinations",
+			func(spec garagev1alpha1.BucketSpec, isValid bool) {
+				resource := garagev1alpha1.Bucket{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      fixture.RandAlpha(8),
+						Namespace: namespace,
+					},
+					Spec: spec,
+				}
+				err := k8sClient.Create(ctx, &resource)
+				DeferCleanup(func() {
+					_ = k8sClient.Delete(ctx, &resource)
+				})
+				if isValid {
+					Expect(err).To(Succeed())
+				} else {
+					Expect(err).To(HaveOccurred())
+				}
+			},
+			Entry("name only",
+				garagev1alpha1.BucketSpec{Name: fixture.RandAlpha(8)},
+				true,
+			),
+			Entry("existingBucket only",
+				garagev1alpha1.BucketSpec{
+					ExistingBucket: &garagev1alpha1.ExistingBucketSpec{
+						Name:           fixture.RandAlpha(8),
+						OwnerKeySecret: fixture.RandAlpha(6),
+					}},
+				true,
+			),
+			Entry("neither name nor existingBucket",
+				garagev1alpha1.BucketSpec{},
+				false,
+			),
+			Entry("both name and existingBucket",
+				garagev1alpha1.BucketSpec{
+					Name: fixture.RandAlpha(8),
+					ExistingBucket: &garagev1alpha1.ExistingBucketSpec{
+						Name:           fixture.RandAlpha(8),
+						OwnerKeySecret: fixture.RandAlpha(6),
+					},
+				},
+				false),
+			Entry("existingBucket without ownerKeySecret",
+				garagev1alpha1.BucketSpec{
+					ExistingBucket: &garagev1alpha1.ExistingBucketSpec{
+						Name: fixture.RandAlpha(8),
+					}},
+				false,
+			),
+			Entry("existingBucket without name",
+				garagev1alpha1.BucketSpec{
+					ExistingBucket: &garagev1alpha1.ExistingBucketSpec{
+						OwnerKeySecret: fixture.RandAlpha(6),
+					}},
+				false,
+			),
+		)
+
+		It("rejects update that changes existingBucket.name", func() {
+			resource := garagev1alpha1.Bucket{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      fixture.RandAlpha(8),
+					Namespace: namespace,
+				},
+				Spec: garagev1alpha1.BucketSpec{ExistingBucket: &garagev1alpha1.ExistingBucketSpec{
+					Name:           "original-bucket",
+					OwnerKeySecret: "my-secret",
+				}},
+			}
+			Expect(k8sClient.Create(ctx, &resource)).To(Succeed())
+			DeferCleanup(func() { _ = k8sClient.Delete(ctx, &resource) })
+
+			Expect(k8sClient.Get(ctx, namespacedName(resource.ObjectMeta), &resource)).To(Succeed())
+			resource.Spec.ExistingBucket.Name = "different-bucket"
+			Expect(k8sClient.Update(ctx, &resource)).To(HaveOccurred())
+		})
+	})
+
+	Context("When reclaiming an existing bucket", func() {
+		const existingBucketName = "garage-bucket-f31d0"
+		ownerKeyID := fixture.RandAlpha(12) // key ID in Garage
+
+		newExistingBucketResource := func(namespace string, secretRef string) garagev1alpha1.Bucket {
+			return garagev1alpha1.Bucket{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      fixture.RandAlpha(8),
+					Namespace: namespace,
+				},
+				Spec: garagev1alpha1.BucketSpec{
+					ExistingBucket: &garagev1alpha1.ExistingBucketSpec{
+						Name:           existingBucketName,
+						OwnerKeySecret: secretRef,
+					},
+				},
+			}
+		}
+
+		keySecret := func(namespace, keyID string) corev1.Secret {
+			return corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      fixture.RandAlpha(8),
+					Namespace: namespace,
+				},
+				Data: map[string][]byte{
+					SecretKeyAccessKeyID:     []byte(keyID),
+					SecretKeySecretAccessKey: []byte(fixture.RandAlpha(12)),
+				},
+			}
+		}
+
+		It("imports bucket when referenced key has owner permission", func() {
+			existingBucketID := fixture.RandAlpha(12)
+
+			By("pre-creating the Garage bucket")
+			sut, s3API, verifier := setupBucket()
+			s3API.buckets[existingBucketID] = s3.Bucket{
+				ID:            existingBucketID,
+				GlobalAliases: []string{existingBucketName},
+			}
+
+			By("creating a Secret with the key")
+			secret := keySecret(namespace, ownerKeyID)
+			Expect(k8sClient.Create(ctx, &secret)).To(Succeed())
+
+			By("assigning owner permissions to the key")
+			Expect(verifier.SetPermissions(ctx, ownerKeyID, existingBucketID, s3.Permissions{Owner: true, Read: true, Write: true})).To(Succeed())
+
+			By("creating the Bucket CR")
+			bucket := newExistingBucketResource(namespace, secret.Name)
+			Expect(k8sClient.Create(ctx, &bucket)).To(Succeed())
+
+			By("reconciling")
+			shouldReconcile(sut, bucket.ObjectMeta)
+
+			By("Bucket is ready")
+			Eventually(func(g Gomega) {
+				g.Expect(k8sClient.Get(ctx, namespacedName(bucket.ObjectMeta), &bucket)).To(Succeed())
+				g.Expect(checkCondition(bucket.Status.Conditions, BucketReady, metav1.ConditionTrue)).To(Succeed())
+				g.Expect(checkCondition(bucket.Status.Conditions, Ready, metav1.ConditionTrue)).To(Succeed())
+			}).Should(Succeed())
+
+			By("With valid Bucket status")
+			Expect(bucket.Status.BucketID).To(Equal(existingBucketID))
+			Expect(bucket.Status.BucketName).To(Equal(existingBucketName))
+
+			By("ConfigMap with bucket name created")
+			Eventually(func(g Gomega) {
+				var cm corev1.ConfigMap
+				g.Expect(k8sClient.Get(ctx, types.NamespacedName{Namespace: namespace, Name: bucket.Name}, &cm)).To(Succeed())
+				g.Expect(cm.Data[configMapKeyBucketName]).To(Equal(existingBucketName))
+			}).Should(Succeed())
+		})
+
+		It("sets Ready condition to false when referenced key does not have owner permission", func() {
+			existingBucketID := fixture.RandAlpha(12)
+
+			By("pre-creating the Garage bucket")
+			sut, s3API, verifier := setupBucket()
+			s3API.buckets[existingBucketID] = s3.Bucket{
+				ID:            existingBucketID,
+				GlobalAliases: []string{existingBucketName},
+			}
+
+			By("creating the owner proof Secret")
+			secret := keySecret(namespace, ownerKeyID)
+			Expect(k8sClient.Create(ctx, &secret)).To(Succeed())
+
+			By("allowing read-only permissions for access key")
+			Expect(
+				verifier.SetPermissions(
+					ctx, ownerKeyID, existingBucketID, s3.Permissions{Owner: false, Read: true})).
+				To(Succeed())
+
+			By("creating the Bucket resource")
+			bucket := newExistingBucketResource(namespace, secret.Name)
+			Expect(k8sClient.Create(ctx, &bucket)).To(Succeed())
+
+			shouldReconcile(sut, bucket.ObjectMeta)
+
+			Expect(k8sClient.Get(ctx, namespacedName(bucket.ObjectMeta), &bucket)).To(Succeed())
+
+			By("BucketReady condition is False with specific reason")
+			Expect(checkCondition(bucket.Status.Conditions, BucketReady, metav1.ConditionFalse)).To(Succeed())
+			Expect(meta.FindStatusCondition(bucket.Status.Conditions, BucketReady).Reason).To(Equal(ReasonOwnershipVerificationFailed))
+
+			By("top-level Ready condition is False")
+			Expect(checkCondition(bucket.Status.Conditions, Ready, metav1.ConditionFalse)).To(Succeed())
+			Expect(meta.FindStatusCondition(bucket.Status.Conditions, Ready).Reason).To(Equal(ReasonOwnershipVerificationFailed))
+
+			By("no ConfigMap is created")
+			var cm corev1.ConfigMap
+			Expect(k8sClient.Get(ctx, types.NamespacedName{Namespace: namespace, Name: bucket.Name}, &cm)).
+				Error().To(Satisfy(apierrors.IsNotFound))
+		})
+
+		It("sets Ready false when the referenced Garage bucket does not exist", func() {
+			By("creating a Secret with a key ID")
+			secret := keySecret(namespace, ownerKeyID)
+			Expect(k8sClient.Create(ctx, &secret)).To(Succeed())
+
+			By("creating a Bucket import for a non-existent Garage bucket")
+			bucket := newExistingBucketResource(namespace, secret.Name)
+			Expect(k8sClient.Create(ctx, &bucket)).To(Succeed())
+
+			sut, _, _ := setupBucket()
+			shouldReconcile(sut, bucket.ObjectMeta)
+
+			Expect(k8sClient.Get(ctx, namespacedName(bucket.ObjectMeta), &bucket)).To(Succeed())
+
+			By("BucketReady condition is False with correct reason")
+			Expect(checkCondition(bucket.Status.Conditions, BucketReady, metav1.ConditionFalse)).To(Succeed())
+			Expect(meta.FindStatusCondition(bucket.Status.Conditions, BucketReady).Reason).To(Equal("BucketNotFound"))
+
+			By("top-level Ready condition is False")
+			Expect(checkCondition(bucket.Status.Conditions, Ready, metav1.ConditionFalse)).To(Succeed())
+		})
+
+		It("sets Ready false with reason when the referenced Secret does not exist", func() {
+			existingBucketID := fixture.RandAlpha(12)
+
+			By("pre-creating the Garage bucket")
+			sut, s3API, _ := setupBucket()
+			s3API.buckets[existingBucketID] = s3.Bucket{
+				ID:            existingBucketID,
+				GlobalAliases: []string{existingBucketName},
+			}
+
+			By("creating a Bucket resource referencing a non-existent Secret")
+			bucket := newExistingBucketResource(namespace, "unknown-secret-"+fixture.RandAlpha(4))
+			Expect(k8sClient.Create(ctx, &bucket)).To(Succeed())
+
+			shouldReconcile(sut, bucket.ObjectMeta)
+
+			Expect(k8sClient.Get(ctx, namespacedName(bucket.ObjectMeta), &bucket)).To(Succeed())
+
+			By("BucketReady condition is False with 'not found' reason")
+			Expect(checkCondition(bucket.Status.Conditions, BucketReady, metav1.ConditionFalse)).To(Succeed())
+			Expect(meta.FindStatusCondition(bucket.Status.Conditions, BucketReady).Reason).To(Equal(ReasonOwnerKeySecretNotFound))
+
+			By("top-level Ready condition is False")
+			Expect(checkCondition(bucket.Status.Conditions, Ready, metav1.ConditionFalse)).To(Succeed())
+			Expect(meta.FindStatusCondition(bucket.Status.Conditions, Ready).Reason).To(Equal(ReasonOwnerKeySecretNotFound))
+		})
 	})
 })
 
@@ -443,10 +690,11 @@ func shouldReconcile(controller *BucketReconciler, obj metav1.ObjectMeta) {
 		Error().ToNot(HaveOccurred())
 }
 
-func setupBucket() (*BucketReconciler, *s3APIFake) {
+func setupBucket() (*BucketReconciler, *s3APIFake, *permissionClientFake) {
 	s3API := newS3APIFake()
-	sut := NewBucketReconciler(k8sClient, k8sClient.Scheme(), s3API, "https://s3.foo/bar:123")
-	return sut, s3API
+	perm := newPermissionClientFake()
+	sut := NewBucketReconciler(k8sClient, k8sClient.Scheme(), s3API, "https://s3.foo/bar:123", perm)
+	return sut, s3API, perm
 }
 
 func newS3APIFake() *s3APIFake {
@@ -456,8 +704,15 @@ func newS3APIFake() *s3APIFake {
 }
 
 type s3APIFake struct {
-	// buckets by id
+	mu      sync.RWMutex
 	buckets map[string]s3.Bucket
+}
+
+// Seed adds a bucket directly, safe for concurrent use with the manager.
+func (s *s3APIFake) Seed(id string, bucket s3.Bucket) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.buckets[id] = bucket
 }
 
 // Create implements S3Client.
@@ -470,12 +725,16 @@ func (s *s3APIFake) Create(ctx context.Context, globalAlias string) (s3.Bucket, 
 		ID:            uuid.NewString(),
 		GlobalAliases: []string{globalAlias},
 	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	s.buckets[new.ID] = new
 	return new, nil
 }
 
 // Update implements S3Client.
 func (s *s3APIFake) Update(ctx context.Context, id string, quotas s3.Quotas) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	b, got := s.buckets[id]
 	if !got {
 		return s3.ErrResourceNotFound
@@ -490,6 +749,8 @@ func (s *s3APIFake) Update(ctx context.Context, id string, quotas s3.Quotas) err
 
 // Get implements S3Client.
 func (s *s3APIFake) Get(ctx context.Context, globalAlias string) (s3.Bucket, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	for _, v := range s.buckets {
 		if slices.Contains(v.GlobalAliases, globalAlias) {
 			return v, nil

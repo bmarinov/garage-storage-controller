@@ -21,6 +21,7 @@ import (
 	"crypto/sha256"
 	"errors"
 	"fmt"
+	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/equality"
@@ -36,9 +37,7 @@ import (
 	"github.com/bmarinov/garage-storage-controller/internal/s3"
 )
 
-const (
-	bucketControllerName = "garage-storage-controller"
-)
+const bucketControllerName = "garage-storage-controller"
 
 const (
 	configMapKeyBucketName = "bucket-name"
@@ -52,12 +51,21 @@ type BucketClient interface {
 	Update(ctx context.Context, id string, quotas s3.Quotas) error
 }
 
+type OwnershipVerifier interface {
+	GetPermissions(ctx context.Context, keyID, bucketID string) (s3.Permissions, error)
+}
+
+const maxRequeueInterval = 15 * time.Minute
+
 // BucketReconciler reconciles a Bucket object
 type BucketReconciler struct {
 	client        client.Client
 	Scheme        *runtime.Scheme
 	bucket        BucketClient
 	s3APIEndpoint string
+	ownership     OwnershipVerifier
+	// baseRequeueInterval to override in tests. Base delay for the exponential backoff.
+	baseRequeueInterval time.Duration
 }
 
 func NewBucketReconciler(
@@ -65,12 +73,15 @@ func NewBucketReconciler(
 	scheme *runtime.Scheme,
 	s3Client BucketClient,
 	s3APIEndpoint string,
+	ownershipVerifier OwnershipVerifier,
 ) *BucketReconciler {
 	return &BucketReconciler{
-		client:        apiClient,
-		Scheme:        scheme,
-		bucket:        s3Client,
-		s3APIEndpoint: s3APIEndpoint,
+		client:              apiClient,
+		Scheme:              scheme,
+		bucket:              s3Client,
+		s3APIEndpoint:       s3APIEndpoint,
+		ownership:           ownershipVerifier,
+		baseRequeueInterval: 5 * time.Second,
 	}
 }
 
@@ -101,7 +112,7 @@ func (r *BucketReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 	orig := bucket.Status.DeepCopy()
 	initializeBucketConditions(&bucket)
 
-	err = r.reconcileBucket(ctx, &bucket)
+	result, err := r.reconcileBucket(ctx, &bucket)
 	updateBucketReadyCondition(&bucket)
 
 	if !equality.Semantic.DeepEqual(*orig, bucket.Status) {
@@ -112,28 +123,30 @@ func (r *BucketReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 		}
 	}
 
-	return ctrl.Result{}, err
+	return result, err
 }
 
-func (r *BucketReconciler) reconcileBucket(ctx context.Context, bucket *garagev1alpha1.Bucket) error {
-	alias := suffixedResourceName(bucket.Spec.Name, bucket.ObjectMeta)
-	s3Bucket, err := r.bucket.Get(ctx, alias)
-	if err != nil {
-		if errors.Is(err, s3.ErrResourceNotFound) {
-			s3Bucket, err = r.bucket.Create(ctx, alias)
-			if err != nil {
-				markBucketNotReady(
-					bucket,
-					"CreateFailed",
-					"Failed to create bucket '%s': %v", alias, err)
-				return fmt.Errorf("create new bucket: %w", err)
-			}
-		} else {
-			markBucketNotReady(
-				bucket,
-				"UnknownState",
-				"S3 API error: %v", err)
-			return err
+func (r *BucketReconciler) reconcileBucket(ctx context.Context, bucket *garagev1alpha1.Bucket) (ctrl.Result, error) {
+	var (
+		s3Bucket s3.Bucket
+		alias    string
+		err      error
+	)
+	if bucket.Spec.ExistingBucket != nil {
+		s3Bucket, alias, err = r.resolveExistingBucket(ctx, bucket)
+		if err != nil {
+			// TODO: distinguish between:
+			// - namespace Secret not found (base, exponential backoff)
+			// - no ownership (max interval?)
+			// - Garage key not found (key deleted, skip backoff)
+			return ctrl.Result{
+				RequeueAfter: ownerSecretBackoff(time.Since(bucket.CreationTimestamp.Time), r.baseRequeueInterval, maxRequeueInterval),
+			}, nil
+		}
+	} else {
+		s3Bucket, alias, err = r.resolveNewBucket(ctx, bucket)
+		if err != nil {
+			return ctrl.Result{}, err
 		}
 	}
 
@@ -156,7 +169,7 @@ func (r *BucketReconciler) reconcileBucket(ctx context.Context, bucket *garagev1
 			markBucketNotReady(bucket,
 				"Update Failed",
 				"Failed to update bucket configuration: %v", err)
-			return fmt.Errorf("updating external bucket to spec: %w", err)
+			return ctrl.Result{}, fmt.Errorf("updating external bucket to spec: %w", err)
 		}
 	}
 	markBucketReady(bucket)
@@ -171,21 +184,19 @@ func (r *BucketReconciler) reconcileBucket(ctx context.Context, bucket *garagev1
 				"Unable to use existing ConfigMap for bucket details: %v",
 				err,
 			)
-			return nil
-		} else {
-			updateBucketCMCondition(bucket, metav1.ConditionFalse,
-				"ConfigMapCreateError",
-				"Unable to create ConfigMap: %v",
-				err,
-			)
-			return err
+			return ctrl.Result{}, nil
 		}
-	} else {
-		updateBucketCMCondition(bucket, metav1.ConditionTrue,
-			"ConfigMapReady", "ConfigMap with external bucket details is ready")
+		updateBucketCMCondition(bucket, metav1.ConditionFalse,
+			"ConfigMapCreateError",
+			"Unable to create ConfigMap: %v",
+			err,
+		)
+		return ctrl.Result{}, err
 	}
+	updateBucketCMCondition(bucket, metav1.ConditionTrue,
+		"ConfigMapReady", "ConfigMap with external bucket details is ready")
 
-	return r.deleteStaleConfigMap(ctx, *bucket)
+	return ctrl.Result{}, r.deleteStaleConfigMap(ctx, *bucket)
 }
 
 // ensureConfigMap creates a new configmap for the bucket or updates the values in an existing one.
@@ -274,6 +285,58 @@ func compareSpec(bucket s3.Bucket, spec garagev1alpha1.BucketSpec) bool {
 	}
 
 	return false
+}
+
+func (r *BucketReconciler) resolveNewBucket(ctx context.Context, bucket *garagev1alpha1.Bucket) (s3.Bucket, string, error) {
+	alias := suffixedResourceName(bucket.Spec.Name, bucket.ObjectMeta)
+	s3Bucket, err := r.bucket.Get(ctx, alias)
+	if err != nil {
+		if errors.Is(err, s3.ErrResourceNotFound) {
+			s3Bucket, err = r.bucket.Create(ctx, alias)
+			if err != nil {
+				markBucketNotReady(bucket, "CreateFailed", "Failed to create bucket '%s': %v", alias, err)
+				return s3.Bucket{}, "", fmt.Errorf("create new bucket: %w", err)
+			}
+		} else {
+			markBucketNotReady(bucket, "UnknownState", "S3 API error: %v", err)
+			return s3.Bucket{}, "", fmt.Errorf("retrieving existing bucket: %w", err)
+		}
+	}
+	return s3Bucket, alias, nil
+}
+
+func (r *BucketReconciler) resolveExistingBucket(ctx context.Context, bucket *garagev1alpha1.Bucket) (s3.Bucket, string, error) {
+	spec := bucket.Spec.ExistingBucket
+
+	var secret corev1.Secret
+	err := r.client.Get(ctx, client.ObjectKey{Namespace: bucket.Namespace, Name: spec.OwnerKeySecret}, &secret)
+	if err != nil {
+		markBucketNotReady(bucket, ReasonOwnerKeySecretNotFound, "Secret %q not found: %v", spec.OwnerKeySecret, err)
+		return s3.Bucket{}, "", fmt.Errorf("get owner key secret: %w", err)
+	}
+	keyID := string(secret.Data[SecretKeyAccessKeyID])
+
+	s3Bucket, err := r.bucket.Get(ctx, spec.Name)
+	if err != nil {
+		markBucketNotReady(bucket, "BucketNotFound", "Bucket %q not found in Garage: %v", spec.Name, err)
+		return s3.Bucket{}, "", fmt.Errorf("get existing bucket: %w", err)
+	}
+
+	perms, err := r.ownership.GetPermissions(ctx, keyID, s3Bucket.ID)
+	if err != nil {
+		markBucketNotReady(bucket, ReasonOwnershipVerificationFailed, "Failed to verify ownership: %v", err)
+		return s3.Bucket{}, "", fmt.Errorf("verify ownership: %w", err)
+	}
+	if !perms.Owner {
+		markBucketNotReady(
+			bucket,
+			ReasonOwnershipVerificationFailed,
+			"Key %q does not have owner permission on bucket %q", keyID, spec.Name,
+		)
+		return s3.Bucket{}, "", fmt.Errorf("ownership check failed: key does not have owner permission")
+	}
+
+	return s3Bucket, spec.Name, nil
 }
 
 // suffixedResourceName extends a name with a suffix based on the resource UID.
