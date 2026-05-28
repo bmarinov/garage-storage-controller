@@ -242,240 +242,239 @@ func TestAccessKeyClient(t *testing.T) {
 	})
 }
 
-func TestPermissionsClient(t *testing.T) {
+func TestPermissionsClient_Set(t *testing.T) {
 	ctx := t.Context()
 	garage := NewClient(garageEnv.AdminAPIAddr, garageEnv.APIToken)
 	sut := garage.PermissionClient
 
-	t.Run("SetPermissions", func(t *testing.T) {
-		bucket, err := garage.BucketClient.Create(ctx, fixture.RandAlpha(16))
+	bucket, err := garage.BucketClient.Create(ctx, fixture.RandAlpha(16))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	t.Run("sets up new key with permissions", func(t *testing.T) {
+		key, err := garage.AccessKeyClient.Create(ctx, fixture.RandAlpha(16))
 		if err != nil {
 			t.Fatal(err)
 		}
-		t.Run("sets up new key with permissions", func(t *testing.T) {
-			keyClient := garage.AccessKeyClient
-			key, err := keyClient.Create(ctx, fixture.RandAlpha(16))
-			if err != nil {
-				t.Fatal(err)
-			}
-			testCases := []struct {
-				desc  string
-				perms s3.Permissions
-			}{
-				{
-					desc:  "read only",
-					perms: newORW(false, true, false),
-				},
-				{
-					desc:  "read write",
-					perms: newORW(false, true, true),
-				},
-				{
-					desc:  "owner read write",
-					perms: newORW(true, true, true),
-				},
-			}
-			for _, tc := range testCases {
-				t.Run(tc.desc, func(t *testing.T) {
-					err = sut.SetPermissions(ctx, key.ID, bucket.ID, tc.perms)
-					if err != nil {
-						t.Fatal(err)
-					}
+		testCases := []struct {
+			desc  string
+			perms s3.Permissions
+		}{
+			{
+				desc:  "read only",
+				perms: newORW(false, true, false),
+			},
+			{
+				desc:  "read write",
+				perms: newORW(false, true, true),
+			},
+			{
+				desc:  "owner read write",
+				perms: newORW(true, true, true),
+			},
+		}
+		for _, tc := range testCases {
+			t.Run(tc.desc, func(t *testing.T) {
+				err = sut.SetPermissions(ctx, key.ID, bucket.ID, tc.perms)
+				if err != nil {
+					t.Fatal(err)
+				}
 
-					permissions, err := sut.GetPermissions(ctx, key.ID, bucket.ID)
-					if err != nil {
-						t.Fatal(err)
-					}
+				permissions, err := sut.GetPermissions(ctx, key.ID, bucket.ID)
+				if err != nil {
+					t.Fatal(err)
+				}
 
-					if permissions.Owner != tc.perms.Owner ||
-						permissions.Read != tc.perms.Read ||
-						permissions.Write != tc.perms.Write {
-						t.Errorf("expected permissions %v got %v", tc.perms, permissions)
-					}
-				})
-			}
-
-		})
-
-		t.Run("change existing permissions", func(t *testing.T) {
-			keyClient := garage.AccessKeyClient
-			key, err := keyClient.Create(ctx, fixture.RandAlpha(16))
-
-			testCases := []struct {
-				desc    string
-				initial s3.Permissions
-				target  s3.Permissions
-			}{
-				{
-					desc:    "drop write",
-					initial: newORW(false, true, true),
-					target:  newORW(false, true, false),
-				},
-				{
-					desc:    "drop owner read write",
-					initial: newORW(true, true, true),
-					target:  newORW(false, false, false),
-				},
-				{
-					desc:    "drop owner add write",
-					initial: newORW(true, true, false),
-					target:  newORW(false, true, true),
-				},
-				{
-					desc:    "add write",
-					initial: newORW(false, true, false),
-					target:  newORW(false, true, true),
-				},
-				{
-					desc:    "add owner read write",
-					initial: newORW(false, false, false),
-					target:  newORW(true, true, true),
-				},
-			}
-			for _, tc := range testCases {
-				t.Run(tc.desc, func(t *testing.T) {
-					err = sut.SetPermissions(ctx, key.ID, bucket.ID, tc.initial)
-					if err != nil {
-						t.Fatal(err)
-					}
-
-					err = sut.SetPermissions(ctx, key.ID, bucket.ID, tc.target)
-					if err != nil {
-						t.Fatal(err)
-					}
-
-					permissions, err := sut.GetPermissions(ctx, key.ID, bucket.ID)
-					if err != nil {
-						t.Fatal(err)
-					}
-
-					if permissions.Owner != tc.target.Owner ||
-						permissions.Read != tc.target.Read ||
-						permissions.Write != tc.target.Write {
-						t.Errorf("expected permissions %v got %v", tc.target, permissions)
-					}
-				})
-			}
-
-		})
-
-		t.Run("unknown key ID", func(t *testing.T) {
-			unknownID := fixture.RandAlpha(16)
-			err = sut.SetPermissions(ctx, unknownID, bucket.ID, s3.Permissions{Read: true})
-			if err == nil {
-				t.Fatal("expected error for invalid key ID")
-			}
-			if !errors.Is(err, s3.ErrResourceNotFound) {
-				t.Errorf("expected %v got %v", s3.ErrResourceNotFound, err)
-			}
-		})
-		t.Run("bucket with ID does not exist", func(t *testing.T) {
-			keyClient := garage.AccessKeyClient
-			key, _ := keyClient.Create(ctx, fixture.RandAlpha(16))
-
-			unknownBucketID := integrationtests.GenerateRandomString(hex.EncodeToString)
-
-			err := sut.SetPermissions(ctx, key.ID, unknownBucketID, s3.Permissions{Write: true})
-			if err == nil {
-				t.Fatal("expected error when bucket ID not found")
-			}
-			if !errors.Is(err, s3.ErrResourceNotFound) {
-				t.Errorf("expected %v got %v", s3.ErrResourceNotFound, err)
-			}
-		})
+				if permissions.Owner != tc.perms.Owner ||
+					permissions.Read != tc.perms.Read ||
+					permissions.Write != tc.perms.Write {
+					t.Errorf("expected permissions %v got %v", tc.perms, permissions)
+				}
+			})
+		}
 	})
 
-	t.Run("GetPermissions", func(t *testing.T) {
-		bucketAlias := fixture.RandAlpha(16)
-		bucket, err := garage.BucketClient.Create(ctx, bucketAlias)
+	t.Run("change existing permissions", func(t *testing.T) {
+		key, err := garage.AccessKeyClient.Create(ctx, fixture.RandAlpha(16))
+		if err != nil {
+			t.Fatal(err)
+		}
+		testCases := []struct {
+			desc    string
+			initial s3.Permissions
+			target  s3.Permissions
+		}{
+			{
+				desc:    "drop write",
+				initial: newORW(false, true, true),
+				target:  newORW(false, true, false),
+			},
+			{
+				desc:    "drop owner read write",
+				initial: newORW(true, true, true),
+				target:  newORW(false, false, false),
+			},
+			{
+				desc:    "drop owner add write",
+				initial: newORW(true, true, false),
+				target:  newORW(false, true, true),
+			},
+			{
+				desc:    "add write",
+				initial: newORW(false, true, false),
+				target:  newORW(false, true, true),
+			},
+			{
+				desc:    "add owner read write",
+				initial: newORW(false, false, false),
+				target:  newORW(true, true, true),
+			},
+		}
+		for _, tc := range testCases {
+			t.Run(tc.desc, func(t *testing.T) {
+				err = sut.SetPermissions(ctx, key.ID, bucket.ID, tc.initial)
+				if err != nil {
+					t.Fatal(err)
+				}
+
+				err = sut.SetPermissions(ctx, key.ID, bucket.ID, tc.target)
+				if err != nil {
+					t.Fatal(err)
+				}
+
+				permissions, err := sut.GetPermissions(ctx, key.ID, bucket.ID)
+				if err != nil {
+					t.Fatal(err)
+				}
+
+				if permissions.Owner != tc.target.Owner ||
+					permissions.Read != tc.target.Read ||
+					permissions.Write != tc.target.Write {
+					t.Errorf("expected permissions %v got %v", tc.target, permissions)
+				}
+			})
+		}
+	})
+
+	t.Run("unknown key ID", func(t *testing.T) {
+		err := sut.SetPermissions(ctx, fixture.RandAlpha(16), bucket.ID, s3.Permissions{Read: true})
+		if err == nil {
+			t.Fatal("expected error for invalid key ID")
+		}
+		if !errors.Is(err, s3.ErrResourceNotFound) {
+			t.Errorf("expected %v got %v", s3.ErrResourceNotFound, err)
+		}
+	})
+
+	t.Run("bucket with ID does not exist", func(t *testing.T) {
+		key, err := garage.AccessKeyClient.Create(ctx, fixture.RandAlpha(16))
+		if err != nil {
+			t.Fatal(err)
+		}
+		unknownBucketID := integrationtests.GenerateRandomString(hex.EncodeToString)
+		err = sut.SetPermissions(ctx, key.ID, unknownBucketID, s3.Permissions{Write: true})
+		if err == nil {
+			t.Fatal("expected error when bucket ID not found")
+		}
+		if !errors.Is(err, s3.ErrResourceNotFound) {
+			t.Errorf("expected %v got %v", s3.ErrResourceNotFound, err)
+		}
+	})
+}
+
+func TestPermissionsClient_Get(t *testing.T) {
+	ctx := t.Context()
+	garage := NewClient(garageEnv.AdminAPIAddr, garageEnv.APIToken)
+	sut := garage.PermissionClient
+
+	bucket, err := garage.BucketClient.Create(ctx, fixture.RandAlpha(16))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	t.Run("returns permissions for key", func(t *testing.T) {
+		testCases := []struct {
+			desc  string
+			perms s3.Permissions
+		}{
+			{
+				desc:  "owner",
+				perms: newORW(true, true, true),
+			},
+			{
+				desc:  "read-write",
+				perms: newORW(false, true, true),
+			},
+			{
+				desc:  "no permissions",
+				perms: newORW(false, false, false),
+			},
+		}
+		for _, tc := range testCases {
+			t.Run(tc.desc, func(t *testing.T) {
+				key, err := garage.AccessKeyClient.Create(ctx, fixture.RandAlpha(16))
+				if err != nil {
+					t.Fatal(err)
+				}
+				err = sut.SetPermissions(ctx, key.ID, bucket.ID, tc.perms)
+				if err != nil {
+					t.Fatal(err)
+				}
+
+				result, err := sut.GetPermissions(ctx, key.ID, bucket.ID)
+				if err != nil {
+					t.Fatal(err)
+				}
+
+				if result != tc.perms {
+					t.Errorf("expected %v got %v", tc.perms, result)
+				}
+			})
+		}
+	})
+
+	t.Run("returns correct permissions per bucket for same key", func(t *testing.T) {
+		second, err := garage.BucketClient.Create(ctx, fixture.RandAlpha(16))
+		if err != nil {
+			t.Fatal(err)
+		}
+		key, err := garage.AccessKeyClient.Create(ctx, fixture.RandAlpha(16))
 		if err != nil {
 			t.Fatal(err)
 		}
 
-		t.Run("returns permissions for key", func(t *testing.T) {
-			testCases := []struct {
-				desc  string
-				perms s3.Permissions
-			}{
-				{
-					desc:  "owner",
-					perms: newORW(true, true, true),
-				},
-				{
-					desc:  "read-write",
-					perms: newORW(false, true, true),
-				},
-				{
-					desc:  "no permissions",
-					perms: newORW(false, false, false),
-				},
-			}
-			for _, tc := range testCases {
-				t.Run(tc.desc, func(t *testing.T) {
-					key, err := garage.AccessKeyClient.Create(ctx, fixture.RandAlpha(16))
-					if err != nil {
-						t.Fatal(err)
-					}
-					err = sut.SetPermissions(ctx, key.ID, bucket.ID, tc.perms)
-					if err != nil {
-						t.Fatal(err)
-					}
+		err = sut.SetPermissions(ctx, key.ID, bucket.ID, newORW(true, true, true))
+		if err != nil {
+			t.Fatal(err)
+		}
+		err = sut.SetPermissions(ctx, key.ID, second.ID, newORW(false, true, false))
+		if err != nil {
+			t.Fatal(err)
+		}
 
-					result, err := sut.GetPermissions(ctx, key.ID, bucket.ID)
-					if err != nil {
-						t.Fatal(err)
-					}
+		firstResult, err := sut.GetPermissions(ctx, key.ID, bucket.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if firstResult != newORW(true, true, true) {
+			t.Errorf("bucket: expected %v got %v", newORW(true, true, true), firstResult)
+		}
 
-					if result != tc.perms {
-						t.Errorf("expected %v got %v", tc.perms, result)
-					}
-				})
-			}
-		})
+		secondResult, err := sut.GetPermissions(ctx, key.ID, second.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if secondResult != newORW(false, true, false) {
+			t.Errorf("second: expected %v got %v", newORW(false, true, false), secondResult)
+		}
+	})
 
-		t.Run("returns correct permissions per bucket for same key", func(t *testing.T) {
-			second, err := garage.BucketClient.Create(ctx, fixture.RandAlpha(16))
-			if err != nil {
-				t.Fatal(err)
-			}
-			key, err := garage.AccessKeyClient.Create(ctx, fixture.RandAlpha(16))
-			if err != nil {
-				t.Fatal(err)
-			}
-
-			err = sut.SetPermissions(ctx, key.ID, bucket.ID, newORW(true, true, true))
-			if err != nil {
-				t.Fatal(err)
-			}
-			err = sut.SetPermissions(ctx, key.ID, second.ID, newORW(false, true, false))
-			if err != nil {
-				t.Fatal(err)
-			}
-
-			// assert
-			firstResult, err := sut.GetPermissions(ctx, key.ID, bucket.ID)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if firstResult != newORW(true, true, true) {
-				t.Errorf("bucket: expected %v got %v", newORW(true, true, true), firstResult)
-			}
-
-			secondResult, err := sut.GetPermissions(ctx, key.ID, second.ID)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if secondResult != newORW(false, true, false) {
-				t.Errorf("second: expected %v got %v", newORW(false, true, false), secondResult)
-			}
-		})
-
-		t.Run("unknown key ID", func(t *testing.T) {
-			_, err := sut.GetPermissions(ctx, fixture.RandAlpha(16), bucket.ID)
-			if !errors.Is(err, s3.ErrResourceNotFound) {
-				t.Errorf("expected %v got %v", s3.ErrResourceNotFound, err)
-			}
-		})
+	t.Run("unknown key ID", func(t *testing.T) {
+		_, err := sut.GetPermissions(ctx, fixture.RandAlpha(16), bucket.ID)
+		if !errors.Is(err, s3.ErrResourceNotFound) {
+			t.Errorf("expected %v got %v", s3.ErrResourceNotFound, err)
+		}
 	})
 }
 
