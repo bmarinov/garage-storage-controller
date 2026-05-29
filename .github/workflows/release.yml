@@ -92,3 +92,24 @@ jobs:
 
             <!-- Changes since last release -->
 
+            <!--
+            ## Upgrading from a previous version
+            No breaking changes. <!-- describe changes to existing fields if any -->
+
+            > Apply the new CRDs bundle to existing installations **before** upgrading.
+
+            ```sh
+            kubectl apply -f \
+            https://github.com/${{ github.repository }}/releases/download/${{ steps.version.outputs.VERSION }}/crds-${{ steps.version.outputs.VERSION }}.yaml
+            ```
+
+            Upgrade the chart to the new version:
+            ```sh
+            helm upgrade garage-storage-controller \
+              oci://ghcr.io/bmarinov/charts/garage-storage-controller \
+              --version <chart-version> \
+              --reuse-values \
+              -n garage-controller-system # replace with your namespace
+            ```
+            -->
+

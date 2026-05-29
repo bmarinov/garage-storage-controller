@@ -18,7 +18,6 @@ Important considerations:
   - Check [Garage: S3 compatibility status](https://garagehq.deuxfleurs.fr/documentation/reference-manual/s3-compatibility/) for details.
 
 Limitations:
-- Existing buckets currently cannot be imported.
 - Accessing buckets outside the 'owning' namespace is not allowed.
 - ConfigMap drift is hard to detect due to the current RBAC & security model.
 
@@ -146,6 +145,35 @@ spec:
   maxSize: 10Gi
 ```
 
+### Importing existing buckets
+
+1. Obtain a key with `owner` permissions on the Garage bucket and create a secret in the target namespace.
+
+1. Create a Bucket API resource and set `spec.existingBucket` accordingly.
+
+
+Example:
+```yaml
+apiVersion: garage.getclustered.net/v1alpha1
+kind: Bucket
+metadata:
+  name: foo-objects
+spec:
+  existingBucket:
+    name: foo-existing-bucket-d7f8a   # exact name in Garage
+    ownerKeySecret: foo-owner-key     # Secret reference
+---
+
+apiVersion: v1
+kind: Secret
+metadata:
+  name: foo-owner-key
+data:
+  access-key-id: "XYZ..."
+  secret-access-key: "..."
+
+```
+
 # Install
 
 ## Configuration
@@ -204,6 +232,19 @@ helm install garage-storage-controller \
   oci://ghcr.io/bmarinov/charts/garage-storage-controller \
   -n garage-controller-system --create-namespace \
   -f myvalues.yaml
+```
+
+### Upgrade
+
+Apply the updated CRDs first, then upgrade the chart. Pass `--reuse-values` to keep your existing configuration:
+```sh
+kubectl apply -f https://github.com/bmarinov/garage-storage-controller/releases/download/<version>/crds-<version>.yaml
+
+helm upgrade garage-storage-controller \
+  oci://ghcr.io/bmarinov/charts/garage-storage-controller \
+  --version <chart-version> \
+  -n garage-controller-system \
+  --reuse-values
 ```
 
 ### Enrolling namespaces
@@ -365,7 +406,7 @@ sudo mv ./kind /usr/local/bin/kind
 
 ### E2E Tests
 
-Setup environment with `make setup-test-e2e` and launch tests in e2e packge.
+Setup environment with `make setup-test-e2e` and launch tests in e2e package.
 
 VS Code launch profile:
 ```json
