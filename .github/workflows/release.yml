@@ -94,7 +94,7 @@ jobs:
 
             <!--
             ## Upgrading from a previous version
-            No breaking changes. <!-- describe changes to existing fields if any -->
+            No breaking changes.
 
             > Apply the new CRDs bundle to existing installations **before** upgrading.
 
