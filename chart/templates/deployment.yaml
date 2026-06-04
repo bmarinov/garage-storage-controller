@@ -39,6 +39,7 @@ spec:
             - --metrics-bind-address=:8443
             - --leader-elect
             - --health-probe-bind-address=:8081
+            - --zap-log-level={{ .Values.logLevel }}
           env:
             - name: GARAGE_API_ENDPOINT
               valueFrom:

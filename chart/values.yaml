@@ -55,3 +55,6 @@ nodeSelector: {}
 tolerations: []
 
 imagePullSecrets: []
+
+# Log level is one of: debug, info, error
+logLevel: info
