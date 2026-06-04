@@ -134,6 +134,9 @@ func (r *AccessKeyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		}
 		a.Status = accessKey.Status
 		err = r.client.Status().Update(ctx, &a)
+		if apierrors.IsConflict(err) {
+			return ctrl.Result{}, nil
+		}
 		return ctrl.Result{}, err
 	}
 
