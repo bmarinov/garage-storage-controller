@@ -133,6 +133,9 @@ func (r *AccessPolicyReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	if metaChanged {
 		err = r.client.Update(ctx, &policy)
 		if err != nil {
+			if apierrors.IsConflict(err) {
+				return ctrl.Result{}, nil
+			}
 			return ctrl.Result{}, fmt.Errorf("updating object meta: %w", err)
 		}
 		// let the next reconciliation loop handle this update:
@@ -164,6 +167,9 @@ func (r *AccessPolicyReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	if !equality.Semantic.DeepEqual(*oldStatus, policy.Status) {
 		err = r.client.Status().Patch(ctx, &policy, client.Merge, client.FieldOwner(bucketControllerName))
 		if err != nil {
+			if apierrors.IsConflict(err) {
+				return ctrl.Result{}, nil
+			}
 			return ctrl.Result{}, err
 		}
 	}

@@ -118,8 +118,13 @@ func (r *BucketReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 	if !equality.Semantic.DeepEqual(*orig, bucket.Status) {
 		patchErr := r.client.Status().Patch(ctx, &bucket, client.Merge, client.FieldOwner(bucketControllerName))
 
-		if err == nil && patchErr != nil {
-			return ctrl.Result{}, patchErr
+		if patchErr != nil {
+			if apierrors.IsConflict(patchErr) {
+				return ctrl.Result{}, nil
+			}
+			if err == nil {
+				return ctrl.Result{}, patchErr
+			}
 		}
 	}
 
