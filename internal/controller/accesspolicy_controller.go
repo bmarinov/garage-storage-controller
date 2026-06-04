@@ -112,16 +112,18 @@ func (r *AccessPolicyReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		if !controllerutil.ContainsFinalizer(&policy, finalizerName) {
 			return ctrl.Result{}, nil
 		}
-		err = r.adminClient.SetPermissions(ctx,
-			policy.Status.AccessKeyID,
-			policy.Status.BucketID,
-			s3.Permissions{})
-		if err != nil {
-			if errors.Is(err, s3.ErrResourceNotFound) {
-				logger.Info("AccessPolicy finalizer: key or bucket already deleted")
-			} else {
-				log.FromContext(ctx).Error(err, "Removing permissions in finalizer failed")
-				return ctrl.Result{}, err
+		if policy.Status.AccessKeyID != "" && policy.Status.BucketID != "" {
+			err = r.adminClient.SetPermissions(ctx,
+				policy.Status.AccessKeyID,
+				policy.Status.BucketID,
+				s3.Permissions{})
+			if err != nil {
+				if errors.Is(err, s3.ErrResourceNotFound) {
+					logger.Info("AccessPolicy finalizer: key or bucket already deleted")
+				} else {
+					log.FromContext(ctx).Error(err, "Removing permissions in finalizer failed")
+					return ctrl.Result{}, err
+				}
 			}
 		}
 
