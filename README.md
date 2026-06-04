@@ -188,6 +188,29 @@ The controller expects the following configuration to be available as environmen
 
 See the [Garage Administration API](https://garagehq.deuxfleurs.fr/documentation/reference-manual/admin-api/#user-defined-api-tokens) docs on how to obtain an admin token.
 
+The controller needs the following Garage Admin API permissions:
+
+**Currently used:**
+
+| Endpoint | Purpose |
+|---|---|
+| `POST /v2/CreateKey` | Create S3 access keys for tenants |
+| `GET /v2/GetKeyInfo` | Look up a key by ID or name |
+| `POST /v2/DeleteKey` | Delete S3 access keys |
+| `POST /v2/CreateBucket` | Create new buckets |
+| `GET /v2/GetBucketInfo` | Look up a bucket by alias or ID |
+| `POST /v2/UpdateBucket` | Set bucket quotas |
+| `POST /v2/AllowBucketKey` | Grant key permissions on a bucket |
+| `POST /v2/DenyBucketKey` | Revoke key permissions from a bucket |
+
+**Planned:**
+
+| Endpoint | Purpose |
+|---|---|
+| `GET /v2/ListBuckets` | Discover orphaned buckets and audit |
+| `POST /v2/DeleteBucket` | Force bucket deletion (future policy/override feature) |
+
+
 ## Install with Helm
 
 The Helm chart oci bundle is at `oci://ghcr.io/bmarinov/charts/garage-storage-controller`.  
