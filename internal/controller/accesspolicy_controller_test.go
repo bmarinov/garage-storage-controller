@@ -23,6 +23,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -346,6 +347,54 @@ var _ = Describe("AccessPolicy Controller", func() {
 			Expect(apiClient.assignedPermissions[fmt.Sprintf("%s:%s", k.Status.AccessKeyID, b.Status.BucketID)]).
 				To(Equal(s3.Permissions{Owner: false, Read: false, Write: false}))
 		})
+		It("removes finalizer on deletion when dependencies were never ready", func() {
+			By("creating policy with non-existent bucket and key")
+			policy := garagev1alpha1.AccessPolicy{
+				ObjectMeta: metav1.ObjectMeta{Name: fixture.RandAlpha(6), Namespace: namespace},
+				Spec: garagev1alpha1.AccessPolicySpec{
+					AccessKey:   "key-does-not-exist",
+					Bucket:      "foo-unknown",
+					Permissions: garagev1alpha1.Permissions{Read: true},
+				},
+			}
+			Expect(k8sClient.Create(ctx, &policy)).To(Succeed())
+
+			sut, apiClient := setupPolicyTest()
+			objID := types.NamespacedName{Name: policy.Name, Namespace: policy.Namespace}
+
+			By("reconciling reaches NotReady with reason BucketMissing")
+			Eventually(func(g Gomega) {
+				_, err := sut.Reconcile(ctx, reconcile.Request{NamespacedName: objID})
+				g.Expect(err).ToNot(HaveOccurred())
+				g.Expect(k8sClient.Get(ctx, objID, &policy)).To(Succeed())
+				readyCond := meta.FindStatusCondition(policy.Status.Conditions, Ready)
+				g.Expect(readyCond).ToNot(BeNil())
+				g.Expect(readyCond.Reason).To(Equal(ReasonBucketMissing))
+			}).Should(Succeed())
+			Expect(policy.Status.BucketID).To(BeEmpty())
+			Expect(policy.Status.AccessKeyID).To(BeEmpty())
+
+			By("deleting the policy")
+			Expect(k8sClient.Delete(ctx, &policy)).To(Succeed())
+			Eventually(func(g Gomega) {
+				g.Expect(k8sClient.Get(ctx, objID, &policy)).To(Succeed())
+				g.Expect(policy.DeletionTimestamp.IsZero()).To(BeFalse())
+			}).Should(Succeed())
+
+			By("finalizer reconciles without error")
+			_, err := sut.Reconcile(ctx, reconcile.Request{NamespacedName: objID})
+			Expect(err).ToNot(HaveOccurred())
+
+			By("object gets fully deleted")
+			Eventually(func(g Gomega) {
+				err := k8sClient.Get(ctx, objID, &policy)
+				g.Expect(apierrors.IsNotFound(err)).To(BeTrue())
+			}).Should(Succeed())
+
+			By("SetPermissions was never called with empty IDs")
+			Expect(apiClient.assignedPermissions).NotTo(HaveKey(":"))
+		})
+
 		It("updates policy status on dependency deletion", func() {
 			By("creating dependencies")
 			bucketName := fixture.RandAlpha(12)
