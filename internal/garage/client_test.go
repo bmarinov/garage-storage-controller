@@ -120,6 +120,58 @@ func TestBucketClient(t *testing.T) {
 	})
 }
 
+func TestGarageClient_BucketAPI(t *testing.T) {
+	sut := NewClient(garageEnv.AdminAPIAddr, garageEnv.APIToken).
+		BucketClient
+
+	t.Run("zero quota fields are not enforced as limits", func(t *testing.T) {
+		testCases := []struct {
+			desc      string
+			requested s3.Quotas
+		}{
+			{"zero MaxObjects", s3.Quotas{MaxObjects: 0, MaxSize: 234}},
+			{"zero MaxSize", s3.Quotas{MaxObjects: 9500, MaxSize: 0}},
+			{"both zero", s3.Quotas{MaxObjects: 0, MaxSize: 0}},
+		}
+		for _, tc := range testCases {
+			t.Run(tc.desc, func(t *testing.T) {
+				bucket, _ := sut.Create(t.Context(), fixture.RandAlpha(12))
+
+				err := sut.Update(t.Context(), bucket.ID, tc.requested)
+				if err != nil {
+					t.Fatal(err)
+				}
+
+				raw, err := sut.getBucketResponse(t.Context(), bucket.GlobalAliases[0])
+				if err != nil {
+					t.Fatal(err)
+				}
+
+				if tc.requested.MaxObjects == 0 && raw.Quotas.MaxObjects != nil {
+					t.Errorf("[%s] MaxObjects: want nil, got %d", tc.desc, *raw.Quotas.MaxObjects)
+				}
+				if tc.requested.MaxSize == 0 && raw.Quotas.MaxSize != nil {
+					t.Errorf("[%s] MaxSize: want nil, got %d", tc.desc, *raw.Quotas.MaxSize)
+				}
+			})
+		}
+	})
+	t.Run("set MaxSize is returned in response when no MaxObjects requested", func(t *testing.T) {
+		bucket, _ := sut.Create(t.Context(), fixture.RandAlpha(12))
+		err := sut.Update(t.Context(), bucket.ID, s3.Quotas{MaxSize: 234})
+		if err != nil {
+			t.Fatal(err)
+		}
+		raw, err := sut.getBucketResponse(t.Context(), bucket.GlobalAliases[0])
+		if err != nil {
+			t.Fatal(err)
+		}
+		if raw.Quotas.MaxSize == nil || *raw.Quotas.MaxSize != 234 {
+			t.Errorf("MaxSize: want 234, got %v", raw.Quotas.MaxSize)
+		}
+	})
+}
+
 func TestAccessKeyClient(t *testing.T) {
 	apiclient := NewClient(garageEnv.AdminAPIAddr, garageEnv.APIToken)
 	sut := apiclient.AccessKeyClient
