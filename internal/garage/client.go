@@ -200,46 +200,52 @@ func (b *BucketClient) Create(ctx context.Context, globalAlias string) (s3.Bucke
 	return s3.Bucket{
 		ID:            result.ID,
 		GlobalAliases: result.GlobalAliases,
-		Quotas:        s3.Quotas(result.Quotas),
+		Quotas:        quotasToS3(result.Quotas),
 	}, err
 }
 
 func (b *BucketClient) Get(ctx context.Context, globalAlias string) (s3.Bucket, error) {
+	result, err := b.getBucketResponse(ctx, globalAlias)
+	if err != nil {
+		return s3.Bucket{}, err
+	}
+	return s3.Bucket{
+		ID:            result.ID,
+		GlobalAliases: result.GlobalAliases,
+		Quotas:        quotasToS3(result.Quotas),
+	}, nil
+}
+
+func (b *BucketClient) getBucketResponse(ctx context.Context, globalAlias string) (BucketResponse, error) {
 	params := url.Values{}
-	// params.Add("id", bucketID)
 	params.Add("globalAlias", globalAlias)
 
 	const path = "/v2/GetBucketInfo"
 
 	resp, err := b.doRequest(ctx, http.MethodGet, path, &params, nil)
 	if err != nil {
-		return s3.Bucket{}, fmt.Errorf("retrieve bucket '%s': %w", globalAlias, err)
+		return BucketResponse{}, fmt.Errorf("retrieve bucket '%s': %w", globalAlias, err)
 	}
 	defer func() {
 		_ = resp.Body.Close()
 	}()
 	if resp.StatusCode != http.StatusOK {
 		if resp.StatusCode == http.StatusNotFound {
-			return s3.Bucket{}, fmt.Errorf("%w: with alias %s", s3.ErrResourceNotFound, globalAlias)
+			return BucketResponse{}, fmt.Errorf("%w: with alias %s", s3.ErrResourceNotFound, globalAlias)
 		}
-		return s3.Bucket{}, fmt.Errorf("unexpected status code %d", resp.StatusCode)
+		return BucketResponse{}, fmt.Errorf("unexpected status code %d", resp.StatusCode)
 	}
 
 	result, err := unmarshalBody[BucketResponse](resp.Body)
 	if err != nil {
-		return s3.Bucket{}, fmt.Errorf("reading %s response: %w", path, err)
+		return BucketResponse{}, fmt.Errorf("reading %s response: %w", path, err)
 	}
-
-	return s3.Bucket{
-		ID:            result.ID,
-		GlobalAliases: result.GlobalAliases,
-		Quotas:        s3.Quotas(result.Quotas),
-	}, err
+	return result, nil
 }
 
 func (b *BucketClient) Update(ctx context.Context, id string, quotas s3.Quotas) error {
 	request := BucketUpdateRequest{
-		Quotas: Quotas(quotas),
+		Quotas: quotasFromS3(quotas),
 	}
 
 	var buf bytes.Buffer

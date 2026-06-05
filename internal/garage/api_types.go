@@ -1,5 +1,7 @@
 package garage
 
+import "github.com/bmarinov/garage-storage-controller/internal/s3"
+
 type BucketUpdateRequest struct {
 	Quotas Quotas `json:"quotas"`
 }
@@ -11,8 +13,30 @@ type BucketResponse struct {
 }
 
 type Quotas struct {
-	MaxObjects int64 `json:"maxObjects"`
-	MaxSize    int64 `json:"maxSize"`
+	MaxObjects *int64 `json:"maxObjects"`
+	MaxSize    *int64 `json:"maxSize,omitempty"`
+}
+
+func quotasFromS3(q s3.Quotas) Quotas {
+	var g Quotas
+	if q.MaxObjects > 0 {
+		g.MaxObjects = &q.MaxObjects
+	}
+	if q.MaxSize > 0 {
+		g.MaxSize = &q.MaxSize
+	}
+	return g
+}
+
+func quotasToS3(q Quotas) s3.Quotas {
+	var out s3.Quotas
+	if q.MaxObjects != nil {
+		out.MaxObjects = *q.MaxObjects
+	}
+	if q.MaxSize != nil {
+		out.MaxSize = *q.MaxSize
+	}
+	return out
 }
 
 type CreateKeyRequest struct {

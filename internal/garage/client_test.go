@@ -120,6 +120,37 @@ func TestBucketClient(t *testing.T) {
 	})
 }
 
+func TestGarageClient_BucketAPI(t *testing.T) {
+	sut := NewClient(garageEnv.AdminAPIAddr, garageEnv.APIToken).
+		BucketClient
+
+	t.Run("zero MaxObjects in bucket quota", func(t *testing.T) {
+		bucketName := fixture.RandAlpha(12)
+		bucket, _ := sut.Create(t.Context(), bucketName)
+
+		requested := s3.Quotas{
+			MaxObjects: 0,
+			MaxSize:    234,
+		}
+
+		err := sut.Update(t.Context(), bucket.ID, requested)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		retrieved, err := sut.getBucketResponse(t.Context(), bucket.GlobalAliases[0])
+		if err != nil {
+			t.Fatal(err)
+		}
+		if requested.MaxSize != *retrieved.Quotas.MaxSize {
+			t.Errorf("MaxSize quota does not match: expected %v got %v", requested.MaxSize, *retrieved.Quotas.MaxSize)
+		}
+		if retrieved.Quotas.MaxObjects != nil {
+			t.Errorf("bucket quotas should not be set to the literal zero value, got %+v", retrieved.Quotas)
+		}
+	})
+}
+
 func TestAccessKeyClient(t *testing.T) {
 	apiclient := NewClient(garageEnv.AdminAPIAddr, garageEnv.APIToken)
 	sut := apiclient.AccessKeyClient
