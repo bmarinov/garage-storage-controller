@@ -21,6 +21,12 @@ Limitations:
 - Accessing buckets outside the 'owning' namespace is not allowed.
 - ConfigMap drift is hard to detect due to the current RBAC & security model.
 
+## Prerequisites
+
+- A running [Garage](https://garagehq.deuxfleurs.fr/documentation/quick-start/) cluster
+- A Kubernetes cluster with the controller installed (see [Install](#install))
+- The controller's ServiceAccount granted access to your namespace (see [Enrolling namespaces](#enrolling-namespaces))
+
 ## Quick start
 
 ```yaml
@@ -30,7 +36,7 @@ metadata:
   name: bucket-sample
 spec:
   name: foo-global-name
-  maxSize: 10Gi
+  maxSize: 2Gi
 
 ---
 apiVersion: garage.getclustered.net/v1alpha1
@@ -56,6 +62,8 @@ spec:
 ```
 
 This will create a bucket and an access key on Garage. Permissions will be set via the admin API.
+
+> **Namespace access required:** The controller must be granted permission to read and write ConfigMaps and Secrets in your namespace before reconciliation will work. If resources stay in a pending state, this is the most likely cause. See [Enrolling namespaces](#enrolling-namespaces).
 
 Bucket configuration and access key will be stored in Kubernetes objects:
 ```yaml
@@ -211,7 +219,7 @@ The controller needs the following Garage Admin API permissions:
 | `POST /v2/DeleteBucket` | Force bucket deletion (future policy/override feature) |
 
 
-## Install with Helm
+## Install with Helm (recommended)
 
 The Helm chart oci bundle is at `oci://ghcr.io/bmarinov/charts/garage-storage-controller`.  
 See [chart/README.md](chart/README.md) for details on the available app and chart versions.
@@ -312,6 +320,10 @@ subjects:
 ```
 
 ## Manual installation
+
+This method is not supported as it is more error-prone and not fully customizable. 
+
+> The recommendation is to stick to `helm template` and `helm show crds` as a fallback.
 
 ### Configuration
 
