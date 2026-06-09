@@ -63,7 +63,7 @@ var _ = Describe("AccessPolicy controller manager", Ordered, func() {
 		Expect(err).ToNot(HaveOccurred())
 
 		// sync with manager setup in main:
-		Expect(NewBucketReconciler(mgr.GetClient(), mgr.GetScheme(), newS3APIFake(), "http://s3.test.foo", nil).
+		Expect(NewBucketReconciler(mgr.GetClient(), mgr.GetScheme(), newS3APIFake(), "http://s3.test.foo", nil, mgr.GetEventRecorderFor("garage-bucket-controller")).
 			SetupWithManager(mgr)).To(Succeed())
 		Expect(NewAccessKeyReconciler(mgr.GetClient(), mgr.GetScheme(), newAccessMgrFake()).
 			SetupWithManager(mgr)).To(Succeed())

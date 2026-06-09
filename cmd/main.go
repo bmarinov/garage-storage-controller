@@ -199,6 +199,7 @@ func main() {
 		garageClient.BucketClient,
 		cfg.garageS3Endpoint,
 		garageClient.PermissionClient,
+		mgr.GetEventRecorderFor("garage-bucket-controller"),
 	).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "Bucket")
 		os.Exit(1)

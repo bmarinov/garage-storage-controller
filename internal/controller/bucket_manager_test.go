@@ -63,7 +63,14 @@ var _ = Describe("Bucket controller manager", Ordered, func() {
 		})
 		Expect(err).ToNot(HaveOccurred())
 
-		r := NewBucketReconciler(mgr.GetClient(), mgr.GetScheme(), s3Fake, "http://s3.bar.com", permissionsClient)
+		r := NewBucketReconciler(
+			mgr.GetClient(),
+			mgr.GetScheme(),
+			s3Fake,
+			"http://s3.bar.com",
+			permissionsClient,
+			mgr.GetEventRecorderFor("garage-bucket-controller"),
+		)
 		r.baseRequeueInterval = time.Second
 		Expect(r.SetupWithManager(mgr)).To(Succeed())
 

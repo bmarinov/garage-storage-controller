@@ -28,6 +28,7 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -64,6 +65,7 @@ type BucketReconciler struct {
 	bucket        BucketClient
 	s3APIEndpoint string
 	ownership     OwnershipVerifier
+	recorder      record.EventRecorder
 	// baseRequeueInterval to override in tests. Base delay for the exponential backoff.
 	baseRequeueInterval time.Duration
 }
@@ -74,6 +76,7 @@ func NewBucketReconciler(
 	s3Client BucketClient,
 	s3APIEndpoint string,
 	ownershipVerifier OwnershipVerifier,
+	recorder record.EventRecorder,
 ) *BucketReconciler {
 	return &BucketReconciler{
 		client:              apiClient,
@@ -81,6 +84,7 @@ func NewBucketReconciler(
 		bucket:              s3Client,
 		s3APIEndpoint:       s3APIEndpoint,
 		ownership:           ownershipVerifier,
+		recorder:            recorder,
 		baseRequeueInterval: 5 * time.Second,
 	}
 }
@@ -96,6 +100,7 @@ func (r *BucketReconciler) SetupWithManager(mgr ctrl.Manager) error {
 // +kubebuilder:rbac:groups=garage.getclustered.net,resources=buckets,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=garage.getclustered.net,resources=buckets/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=garage.getclustered.net,resources=buckets/finalizers,verbs=update
+// +kubebuilder:rbac:groups="",resources=events,verbs=create;patch
 
 func (r *BucketReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	bucket := garagev1alpha1.Bucket{}
@@ -302,6 +307,7 @@ func (r *BucketReconciler) resolveNewBucket(ctx context.Context, bucket *garagev
 				markBucketNotReady(bucket, "CreateFailed", "Failed to create bucket '%s': %v", alias, err)
 				return s3.Bucket{}, "", fmt.Errorf("create new bucket: %w", err)
 			}
+			r.recorder.Eventf(bucket, corev1.EventTypeNormal, ReasonBucketCreated, "Created Garage bucket %q", alias)
 		} else {
 			markBucketNotReady(bucket, "UnknownState", "S3 API error: %v", err)
 			return s3.Bucket{}, "", fmt.Errorf("retrieving existing bucket: %w", err)
