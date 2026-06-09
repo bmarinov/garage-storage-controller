@@ -5,6 +5,13 @@ metadata:
   name: garage-controller-role
 rules:
 - apiGroups:
+  - ""
+  resources:
+  - events
+  verbs:
+  - create
+  - patch
+- apiGroups:
   - garage.getclustered.net
   resources:
   - accesskeys
