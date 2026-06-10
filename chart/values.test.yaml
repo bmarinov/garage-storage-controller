@@ -1,0 +1,9 @@
+config:
+  garageApiEndpoint: "http://garage:3903"
+  garageS3ApiEndpoint: "http://garage:3900"
+
+existingSecret: "secretname"
+
+resources:
+  limits:
+    memory: 1028Mi
