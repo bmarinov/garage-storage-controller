@@ -26,5 +26,13 @@ jobs:
             exit 1
           fi
 
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+
+      - name: RBAC drift check
+        run: go test -tags chart ./test/chart/
+
       - name: Helm lint
         run: helm lint chart/
