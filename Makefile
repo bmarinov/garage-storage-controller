@@ -52,7 +52,7 @@ generate: controller-gen license-headers ## Generate code containing DeepCopy, D
 
 .PHONY: license-headers
 license-headers: addlicense ## Add license headers to Go files.
-	find . -name '*.go' -not -path './bin/*' -not -path './vendor/*' | xargs "$(ADDLICENSE)" -f hack/boilerplate.go.txt
+	find . -name '*.go' -not -path './bin/*' -not -path './vendor/*' | xargs "$(ADDLICENSE)" -f hack/license-header.txt
 
 .PHONY: fmt
 fmt: ## Run go fmt against code.
