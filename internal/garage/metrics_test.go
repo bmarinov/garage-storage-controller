@@ -22,7 +22,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	dto "github.com/prometheus/client_model/go"
-	crmetrics "sigs.k8s.io/controller-runtime/pkg/metrics"
 )
 
 func TestDoRequestMetrics(t *testing.T) {
@@ -38,14 +37,14 @@ func TestDoRequestMetrics(t *testing.T) {
 		}
 		for _, tc := range testCases {
 			t.Run(tc.statusCodeBucket, func(t *testing.T) {
-				apiRequests.Reset()
+				m := NewMetrics()
 
 				srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 					w.WriteHeader(tc.status)
 				}))
 				defer srv.Close()
 
-				err := NewClient(srv.URL, "token").Health(t.Context())
+				err := NewClient(srv.URL, "token", WithMetrics(m)).Health(t.Context())
 				if tc.wantErr && err == nil {
 					t.Fatal("expected error, got nil")
 				}
@@ -53,7 +52,7 @@ func TestDoRequestMetrics(t *testing.T) {
 					t.Fatalf("unexpected error: %v", err)
 				}
 
-				got := testutil.ToFloat64(apiRequests.WithLabelValues(tc.statusCodeBucket))
+				got := testutil.ToFloat64(m.requests.WithLabelValues(tc.statusCodeBucket))
 				if got != 1 {
 					t.Errorf("requests{code=%s} = %v, expected 1", tc.statusCodeBucket, got)
 				}
@@ -62,32 +61,44 @@ func TestDoRequestMetrics(t *testing.T) {
 	})
 
 	t.Run("counts transport failures as error", func(t *testing.T) {
-		apiRequests.Reset()
+		m := NewMetrics()
 
 		// :1 is reserved and causes a transport error:
-		err := NewClient("http://127.0.0.1:1", "token").Health(t.Context())
+		err := NewClient("http://127.0.0.1:1", "token", WithMetrics(m)).Health(t.Context())
 		if err == nil {
 			t.Fatal("expected transport error, got nil")
 		}
 
-		got := testutil.ToFloat64(apiRequests.WithLabelValues(codeError))
+		got := testutil.ToFloat64(m.requests.WithLabelValues(codeError))
 		if got != 1 {
 			t.Errorf("requests{code=error} = %v, expected 1", got)
 		}
 	})
 
 	t.Run("records request duration", func(t *testing.T) {
+		m := NewMetrics()
+
 		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 			w.WriteHeader(http.StatusOK)
 		}))
 		defer srv.Close()
 
-		before := histogramSampleCount(t, apiRequestDuration)
-		if err := NewClient(srv.URL, "token").Health(t.Context()); err != nil {
+		if err := NewClient(srv.URL, "token", WithMetrics(m)).Health(t.Context()); err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		if after := histogramSampleCount(t, apiRequestDuration); after <= before {
-			t.Errorf("duration sample count = %d, expected > %d", after, before)
+		if got := histogramSampleCount(t, m.duration); got != 1 {
+			t.Errorf("duration sample count = %d, expected 1", got)
+		}
+	})
+
+	t.Run("a client without metrics records nothing and does not panic", func(t *testing.T) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusOK)
+		}))
+		defer srv.Close()
+
+		if err := NewClient(srv.URL, "token").Health(t.Context()); err != nil {
+			t.Fatalf("unexpected error: %v", err)
 		}
 	})
 }
@@ -101,23 +112,26 @@ func histogramSampleCount(t *testing.T, h prometheus.Histogram) uint64 {
 	return m.GetHistogram().GetSampleCount()
 }
 
-func TestRegisterMetrics(t *testing.T) {
-	RegisterMetrics()
+func TestMetricsCollectors(t *testing.T) {
+	m := NewMetrics()
 
-	apiRequestDuration.Observe(0.01)
+	m.duration.Observe(0.01)
 	// no series exposed until a label is observed:
-	apiRequests.WithLabelValues(codeHTTP2xx).Inc()
+	m.requests.WithLabelValues(codeHTTP2xx).Inc()
+
+	reg := prometheus.NewRegistry()
+	reg.MustRegister(m.Collectors()...)
 
 	for _, name := range []string{
 		"garage_admin_api_requests_total",
 		"garage_admin_api_request_duration_seconds",
 	} {
-		count, err := testutil.GatherAndCount(crmetrics.Registry, name)
+		count, err := testutil.GatherAndCount(reg, name)
 		if err != nil {
 			t.Fatalf("gathering %s: %v", name, err)
 		}
 		if count == 0 {
-			t.Errorf("%s not registered on the controller-runtime registry", name)
+			t.Errorf("%s not registered", name)
 		}
 	}
 }

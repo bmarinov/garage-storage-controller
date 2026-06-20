@@ -15,24 +15,45 @@
 package garage
 
 import (
+	"time"
+
 	"github.com/prometheus/client_golang/prometheus"
-	crmetrics "sigs.k8s.io/controller-runtime/pkg/metrics"
 )
 
-var (
-	apiRequests = prometheus.NewCounterVec(prometheus.CounterOpts{
-		Name: "garage_admin_api_requests_total",
-		Help: "Total Garage admin API requests by response status class (2xx/4xx/5xx or error).",
-	}, []string{"code"})
+// Metrics holds the Garage admin API metrics for a single client.
+// Construct with NewMetrics and register Collectors() with the Prometheus registry.
+//
+// Pass instance to NewClient via WithMetrics to start recording.
+type Metrics struct {
+	requests *prometheus.CounterVec
+	duration prometheus.Histogram
+}
 
-	apiRequestDuration = prometheus.NewHistogram(prometheus.HistogramOpts{
-		Name:    "garage_admin_api_request_duration_seconds",
-		Help:    "Duration of Garage admin API requests in seconds.",
-		Buckets: prometheus.DefBuckets,
-	})
-)
+func NewMetrics() *Metrics {
+	return &Metrics{
+		requests: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Name: "garage_admin_api_requests_total",
+			Help: "Total Garage admin API requests by response status class (2xx/4xx/5xx or error).",
+		}, []string{"code"}),
+		duration: prometheus.NewHistogram(prometheus.HistogramOpts{
+			Name:    "garage_admin_api_request_duration_seconds",
+			Help:    "Duration of Garage admin API requests in seconds.",
+			Buckets: prometheus.DefBuckets,
+		}),
+	}
+}
 
-// Values for the "code" label on apiRequests
+// Collectors returns the metrics to register with a Prometheus registry.
+func (m *Metrics) Collectors() []prometheus.Collector {
+	return []prometheus.Collector{m.requests, m.duration}
+}
+
+func (m *Metrics) record(code string, d time.Duration) {
+	m.duration.Observe(d.Seconds())
+	m.requests.WithLabelValues(code).Inc()
+}
+
+// Values for the "code" label on requests
 const (
 	codeHTTP2xx = "2xx"
 	codeHTTP3xx = "3xx"
@@ -40,18 +61,6 @@ const (
 	codeHTTP5xx = "5xx"
 	codeError   = "error"
 )
-
-// collectors lists every metric exposed by this package.
-var collectors = []prometheus.Collector{apiRequests, apiRequestDuration}
-
-// RegisterMetrics registers the Garage admin API metrics with the
-// controller-runtime registry.
-// Call exactly once during startup or MustRegister will panic.
-func RegisterMetrics() {
-	// TODO: sync once?;
-	// TODO: garage client package is now tied to controller-runtime, improve.
-	crmetrics.Registry.MustRegister(collectors...)
-}
 
 // statusClass maps an HTTP status code to a low cardinality label.
 func statusClass(code int) string {

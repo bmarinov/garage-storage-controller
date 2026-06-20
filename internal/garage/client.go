@@ -35,11 +35,23 @@ type AdminClient struct {
 	*ClusterClient
 }
 
-func NewClient(apiAddr string, token string) *AdminClient {
+// Option configures an AdminClient at construction.
+type Option func(*adminAPIHttpClient)
+
+// WithMetrics makes the client record request metrics into m. Without it the
+// client records nothing.
+func WithMetrics(m *Metrics) Option {
+	return func(c *adminAPIHttpClient) { c.metrics = m }
+}
+
+func NewClient(apiAddr string, token string, opts ...Option) *AdminClient {
 	baseClient := adminAPIHttpClient{
 		httpClient: &http.Client{},
 		token:      token,
 		baseURL:    apiAddr,
+	}
+	for _, opt := range opts {
+		opt(&baseClient)
 	}
 
 	keyClient := &AccessKeyClient{
@@ -424,6 +436,7 @@ type adminAPIHttpClient struct {
 	httpClient *http.Client
 	token      string
 	baseURL    string
+	metrics    *Metrics
 }
 
 // Health performs an authenticated GET against the admin API.
@@ -463,12 +476,13 @@ func (c *adminAPIHttpClient) doRequest(ctx context.Context,
 
 	resp, err := c.send(ctx, method, path, queryParams, body)
 
-	apiRequestDuration.Observe(time.Since(start).Seconds())
-	code := codeError
-	if err == nil && resp != nil {
-		code = statusClass(resp.StatusCode)
+	if c.metrics != nil {
+		code := codeError
+		if err == nil && resp != nil {
+			code = statusClass(resp.StatusCode)
+		}
+		c.metrics.record(code, time.Since(start))
 	}
-	apiRequests.WithLabelValues(code).Inc()
 
 	return resp, err
 }
