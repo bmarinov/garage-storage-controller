@@ -31,6 +31,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
+	crmetrics "sigs.k8s.io/controller-runtime/pkg/metrics"
 	"sigs.k8s.io/controller-runtime/pkg/metrics/filters"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
@@ -190,9 +191,14 @@ func main() {
 		os.Exit(1)
 	}
 
-	garage.RegisterMetrics()
+	garageMetrics := garage.NewMetrics()
+	crmetrics.Registry.MustRegister(garageMetrics.Collectors()...)
 
-	garageClient := garage.NewClient(cfg.garageAPIEndpoint, cfg.garageAPIToken)
+	garageClient := garage.NewClient(
+		cfg.garageAPIEndpoint,
+		cfg.garageAPIToken,
+		garage.WithMetrics(garageMetrics),
+	)
 	if err := controller.NewBucketReconciler(
 		mgr.GetClient(),
 		mgr.GetScheme(),
