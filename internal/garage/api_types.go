@@ -16,6 +16,14 @@ package garage
 
 import "github.com/bmarinov/garage-storage-controller/internal/s3"
 
+// AdminTokenInfo is the response from GetCurrentAdminTokenInfo.
+type AdminTokenInfo struct {
+	Name       string   `json:"name"`
+	Expired    bool     `json:"expired"`
+	Scope      []string `json:"scope"`
+	Expiration *string  `json:"expiration"`
+}
+
 type BucketUpdateRequest struct {
 	Quotas Quotas `json:"quotas"`
 }
