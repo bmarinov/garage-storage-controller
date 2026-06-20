@@ -123,8 +123,8 @@ func TestMetricsCollectors(t *testing.T) {
 	reg.MustRegister(m.Collectors()...)
 
 	for _, name := range []string{
-		"garage_admin_api_requests_total",
-		"garage_admin_api_request_duration_seconds",
+		"garage_controller_admin_api_requests_total",
+		"garage_controller_admin_api_request_duration_seconds",
 	} {
 		count, err := testutil.GatherAndCount(reg, name)
 		if err != nil {
