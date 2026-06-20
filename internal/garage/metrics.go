@@ -29,17 +29,29 @@ type Metrics struct {
 	duration prometheus.Histogram
 }
 
+const (
+	metricsNamespace = "garage_controller"
+	metricsSubsystem = "admin_api"
+)
+
 func NewMetrics() *Metrics {
 	return &Metrics{
-		requests: prometheus.NewCounterVec(prometheus.CounterOpts{
-			Name: "garage_admin_api_requests_total",
-			Help: "Total Garage admin API requests by response status class (2xx/4xx/5xx or error).",
-		}, []string{"code"}),
-		duration: prometheus.NewHistogram(prometheus.HistogramOpts{
-			Name:    "garage_admin_api_request_duration_seconds",
-			Help:    "Duration of Garage admin API requests in seconds.",
-			Buckets: prometheus.DefBuckets,
-		}),
+		requests: prometheus.NewCounterVec(
+			prometheus.CounterOpts{
+				Namespace: metricsNamespace,
+				Subsystem: metricsSubsystem,
+				Name:      "requests_total",
+				Help:      "Total Garage admin API requests by response status class (2xx/4xx/5xx or error).",
+			},
+			[]string{"status_class"}),
+		duration: prometheus.NewHistogram(
+			prometheus.HistogramOpts{
+				Namespace: metricsNamespace,
+				Subsystem: metricsSubsystem,
+				Name:      "request_duration_seconds",
+				Help:      "Duration of Garage admin API requests in seconds.",
+				Buckets:   prometheus.DefBuckets,
+			}),
 	}
 }
 
@@ -53,7 +65,7 @@ func (m *Metrics) record(code string, d time.Duration) {
 	m.requests.WithLabelValues(code).Inc()
 }
 
-// Values for the "code" label on requests
+// Values for the "status_class" label on requests
 const (
 	codeHTTP2xx = "2xx"
 	codeHTTP3xx = "3xx"
