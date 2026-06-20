@@ -23,6 +23,7 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"time"
 
 	"github.com/bmarinov/garage-storage-controller/internal/s3"
 )
@@ -31,19 +32,35 @@ type AdminClient struct {
 	*BucketClient
 	*AccessKeyClient
 	*PermissionClient
+	*ClusterClient
 }
 
-func NewClient(apiAddr string, token string) *AdminClient {
+// Option configures an AdminClient at construction.
+type Option func(*adminAPIHttpClient)
+
+// WithMetrics makes the client record request metrics into m. Without it the
+// client records nothing.
+func WithMetrics(m *Metrics) Option {
+	return func(c *adminAPIHttpClient) { c.metrics = m }
+}
+
+func NewClient(apiAddr string, token string, opts ...Option) *AdminClient {
 	baseClient := adminAPIHttpClient{
 		httpClient: &http.Client{},
 		token:      token,
 		baseURL:    apiAddr,
+	}
+	for _, opt := range opts {
+		opt(&baseClient)
 	}
 
 	keyClient := &AccessKeyClient{
 		&baseClient,
 	}
 	return &AdminClient{
+		ClusterClient: &ClusterClient{
+			&baseClient,
+		},
 		BucketClient: &BucketClient{
 			&baseClient,
 		},
@@ -53,6 +70,10 @@ func NewClient(apiAddr string, token string) *AdminClient {
 			accessKeys:         keyClient,
 		},
 	}
+}
+
+type ClusterClient struct {
+	*adminAPIHttpClient
 }
 
 type AccessKeyClient struct {
@@ -415,9 +436,58 @@ type adminAPIHttpClient struct {
 	httpClient *http.Client
 	token      string
 	baseURL    string
+	metrics    *Metrics
 }
 
+// Health performs an authenticated GET against the admin API.
+// Returns nil error when the response is 2xx.
+func (a *AdminClient) Health(ctx context.Context) error {
+	return a.ClusterClient.health(ctx)
+}
+
+func (c *adminAPIHttpClient) health(ctx context.Context) error {
+	const path = "/v2/GetClusterHealth"
+	resp, err := c.doRequest(ctx, http.MethodGet, path, nil, nil)
+	if err != nil {
+		return fmt.Errorf("garage admin api health: %w", err)
+	}
+	defer func() {
+		_ = resp.Body.Close()
+	}()
+	if resp.StatusCode != http.StatusOK {
+		switch resp.StatusCode {
+		case http.StatusForbidden:
+			return fmt.Errorf("admin api healthcheck: forbidden %d", resp.StatusCode)
+		default:
+			return fmt.Errorf("garage admin api health: unexpected status code %d", resp.StatusCode)
+		}
+	}
+	return nil
+}
+
+// doRequest performs an admin API call and records request metrics.
 func (c *adminAPIHttpClient) doRequest(ctx context.Context,
+	method string,
+	path string,
+	queryParams *url.Values,
+	body io.Reader,
+) (*http.Response, error) {
+	start := time.Now()
+
+	resp, err := c.send(ctx, method, path, queryParams, body)
+
+	if c.metrics != nil {
+		code := codeError
+		if err == nil && resp != nil {
+			code = statusClass(resp.StatusCode)
+		}
+		c.metrics.record(code, time.Since(start))
+	}
+
+	return resp, err
+}
+
+func (c *adminAPIHttpClient) send(ctx context.Context,
 	method string,
 	path string,
 	queryParams *url.Values,
