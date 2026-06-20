@@ -112,6 +112,26 @@ func histogramSampleCount(t *testing.T, h prometheus.Histogram) uint64 {
 	return m.GetHistogram().GetSampleCount()
 }
 
+func TestSetUp(t *testing.T) {
+	testCases := []struct {
+		name string
+		ok   bool
+		want float64
+	}{
+		{"reachable sets gauge to 1", true, 1},
+		{"unreachable sets 0", false, 0},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			m := NewMetrics()
+			m.SetUp(tc.ok)
+			if got := testutil.ToFloat64(m.up); got != tc.want {
+				t.Errorf("up = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
 func TestMetricsCollectors(t *testing.T) {
 	m := NewMetrics()
 
@@ -125,6 +145,7 @@ func TestMetricsCollectors(t *testing.T) {
 	for _, name := range []string{
 		"garage_controller_admin_api_requests_total",
 		"garage_controller_admin_api_request_duration_seconds",
+		"garage_controller_admin_api_up",
 	} {
 		count, err := testutil.GatherAndCount(reg, name)
 		if err != nil {
