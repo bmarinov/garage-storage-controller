@@ -23,6 +23,7 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"time"
 
 	"github.com/bmarinov/garage-storage-controller/internal/s3"
 )
@@ -31,6 +32,7 @@ type AdminClient struct {
 	*BucketClient
 	*AccessKeyClient
 	*PermissionClient
+	*ClusterClient
 }
 
 func NewClient(apiAddr string, token string) *AdminClient {
@@ -44,6 +46,9 @@ func NewClient(apiAddr string, token string) *AdminClient {
 		&baseClient,
 	}
 	return &AdminClient{
+		ClusterClient: &ClusterClient{
+			&baseClient,
+		},
 		BucketClient: &BucketClient{
 			&baseClient,
 		},
@@ -53,6 +58,10 @@ func NewClient(apiAddr string, token string) *AdminClient {
 			accessKeys:         keyClient,
 		},
 	}
+}
+
+type ClusterClient struct {
+	*adminAPIHttpClient
 }
 
 type AccessKeyClient struct {
@@ -417,7 +426,54 @@ type adminAPIHttpClient struct {
 	baseURL    string
 }
 
+// Health performs an authenticated GET against the admin API.
+// Returns nil error when the response is 2xx.
+func (a *AdminClient) Health(ctx context.Context) error {
+	return a.ClusterClient.health(ctx)
+}
+
+func (c *adminAPIHttpClient) health(ctx context.Context) error {
+	const path = "/v2/GetClusterHealth"
+	resp, err := c.doRequest(ctx, http.MethodGet, path, nil, nil)
+	if err != nil {
+		return fmt.Errorf("garage admin api health: %w", err)
+	}
+	defer func() {
+		_ = resp.Body.Close()
+	}()
+	if resp.StatusCode != http.StatusOK {
+		switch resp.StatusCode {
+		case http.StatusForbidden:
+			return fmt.Errorf("admin api healthcheck: forbidden %d", resp.StatusCode)
+		default:
+			return fmt.Errorf("garage admin api health: unexpected status code %d", resp.StatusCode)
+		}
+	}
+	return nil
+}
+
+// doRequest performs an admin API call and records request metrics.
 func (c *adminAPIHttpClient) doRequest(ctx context.Context,
+	method string,
+	path string,
+	queryParams *url.Values,
+	body io.Reader,
+) (*http.Response, error) {
+	start := time.Now()
+
+	resp, err := c.send(ctx, method, path, queryParams, body)
+
+	apiRequestDuration.Observe(time.Since(start).Seconds())
+	code := codeError
+	if err == nil && resp != nil {
+		code = statusClass(resp.StatusCode)
+	}
+	apiRequests.WithLabelValues(code).Inc()
+
+	return resp, err
+}
+
+func (c *adminAPIHttpClient) send(ctx context.Context,
 	method string,
 	path string,
 	queryParams *url.Values,

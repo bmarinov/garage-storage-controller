@@ -38,6 +38,29 @@ func TestMain(m *testing.M) {
 	m.Run()
 }
 
+func TestHealthCheck(t *testing.T) {
+	t.Run("authenticated against a running Garage instance", func(t *testing.T) {
+		sut := NewClient(garageEnv.AdminAPIAddr, garageEnv.APIToken)
+		if err := sut.Health(t.Context()); err != nil {
+			t.Fatalf("expected healthy garage, got %v", err)
+		}
+	})
+
+	t.Run("invalid token", func(t *testing.T) {
+		sut := NewClient(garageEnv.AdminAPIAddr, "not-a-valid-token")
+		if err := sut.Health(t.Context()); err == nil {
+			t.Fatal("expected error for invalid token")
+		}
+	})
+
+	t.Run("admin API is unreachable", func(t *testing.T) {
+		sut := NewClient("http://127.0.0.1:1", garageEnv.APIToken)
+		if err := sut.Health(t.Context()); err == nil {
+			t.Fatal("expected error for unreachable endpoint")
+		}
+	})
+}
+
 func TestBucketClient(t *testing.T) {
 	sut := NewClient(garageEnv.AdminAPIAddr, garageEnv.APIToken).BucketClient
 

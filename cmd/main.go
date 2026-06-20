@@ -190,6 +190,8 @@ func main() {
 		os.Exit(1)
 	}
 
+	garage.RegisterMetrics()
+
 	garageClient := garage.NewClient(cfg.garageAPIEndpoint, cfg.garageAPIToken)
 	if err := controller.NewBucketReconciler(
 		mgr.GetClient(),
