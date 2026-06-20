@@ -76,6 +76,50 @@ type ClusterClient struct {
 	*adminAPIHttpClient
 }
 
+// Health reports whether the admin API is reachable via GET against GetClusterHealth.
+//
+// Returns nil when the response is 2xx.
+func (c *ClusterClient) Health(ctx context.Context) error {
+	const path = "/v2/GetClusterHealth"
+	resp, err := c.doRequest(ctx, http.MethodGet, path, nil, nil)
+	if err != nil {
+		return fmt.Errorf("garage admin api health: %w", err)
+	}
+	defer func() {
+		_ = resp.Body.Close()
+	}()
+	if resp.StatusCode != http.StatusOK {
+		switch resp.StatusCode {
+		case http.StatusForbidden:
+			return fmt.Errorf("garage admin api health: forbidden (status %d)", resp.StatusCode)
+		default:
+			return fmt.Errorf("garage admin api health: unexpected status code %d", resp.StatusCode)
+		}
+	}
+	return nil
+}
+
+// CurrentTokenInfo returns the admin token the client authenticates with.
+func (c *ClusterClient) CurrentTokenInfo(ctx context.Context) (AdminTokenInfo, error) {
+	const path = "/v2/GetCurrentAdminTokenInfo"
+	resp, err := c.doRequest(ctx, http.MethodGet, path, nil, nil)
+	if err != nil {
+		return AdminTokenInfo{}, fmt.Errorf("garage admin token info: %w", err)
+	}
+	defer func() {
+		_ = resp.Body.Close()
+	}()
+	if resp.StatusCode != http.StatusOK {
+		switch resp.StatusCode {
+		case http.StatusForbidden:
+			return AdminTokenInfo{}, fmt.Errorf("garage admin token info: token rejected (status %d)", resp.StatusCode)
+		default:
+			return AdminTokenInfo{}, fmt.Errorf("garage admin token info: unexpected status code %d", resp.StatusCode)
+		}
+	}
+	return unmarshalBody[AdminTokenInfo](resp.Body)
+}
+
 type AccessKeyClient struct {
 	*adminAPIHttpClient
 }
@@ -439,33 +483,7 @@ type adminAPIHttpClient struct {
 	metrics    *Metrics
 }
 
-// Health performs an authenticated GET against the admin API.
-// Returns nil error when the response is 2xx.
-func (a *AdminClient) Health(ctx context.Context) error {
-	return a.ClusterClient.health(ctx)
-}
-
-func (c *adminAPIHttpClient) health(ctx context.Context) error {
-	const path = "/v2/GetClusterHealth"
-	resp, err := c.doRequest(ctx, http.MethodGet, path, nil, nil)
-	if err != nil {
-		return fmt.Errorf("garage admin api health: %w", err)
-	}
-	defer func() {
-		_ = resp.Body.Close()
-	}()
-	if resp.StatusCode != http.StatusOK {
-		switch resp.StatusCode {
-		case http.StatusForbidden:
-			return fmt.Errorf("admin api healthcheck: forbidden %d", resp.StatusCode)
-		default:
-			return fmt.Errorf("garage admin api health: unexpected status code %d", resp.StatusCode)
-		}
-	}
-	return nil
-}
-
-// doRequest performs an admin API call and records request metrics.
+// doRequest performs an admin API call and records request metrics when enabled.
 func (c *adminAPIHttpClient) doRequest(ctx context.Context,
 	method string,
 	path string,

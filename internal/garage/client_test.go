@@ -47,7 +47,7 @@ func TestHealthCheck(t *testing.T) {
 	})
 
 	t.Run("invalid token", func(t *testing.T) {
-		sut := NewClient(garageEnv.AdminAPIAddr, "not-a-valid-token")
+		sut := NewClient(garageEnv.AdminAPIAddr, "not-a-token")
 		if err := sut.Health(t.Context()); err == nil {
 			t.Fatal("expected error for invalid token")
 		}
@@ -57,6 +57,41 @@ func TestHealthCheck(t *testing.T) {
 		sut := NewClient("http://127.0.0.1:1", garageEnv.APIToken)
 		if err := sut.Health(t.Context()); err == nil {
 			t.Fatal("expected error for unreachable endpoint")
+		}
+	})
+}
+
+func TestCurrentTokenInfo(t *testing.T) {
+	t.Run("valid token returns usable info", func(t *testing.T) {
+		sut := NewClient(garageEnv.AdminAPIAddr, garageEnv.APIToken)
+		info, err := sut.CurrentTokenInfo(t.Context())
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if info.Expired {
+			t.Error("expected a non-expired token")
+		}
+		if info.Name == "" {
+			t.Error("expected a token name")
+		}
+		if len(info.Scope) == 0 {
+			t.Error("expected at least one scope")
+		}
+	})
+
+	t.Run("invalid token", func(t *testing.T) {
+		sut := NewClient(garageEnv.AdminAPIAddr, fixture.RandAlpha(20))
+		_, err := sut.CurrentTokenInfo(t.Context())
+		if err == nil {
+			t.Fatal("expected error for invalid token")
+		}
+	})
+
+	t.Run("admin API is unreachable", func(t *testing.T) {
+		sut := NewClient("http://127.0.0.1:1", garageEnv.APIToken)
+		_, err := sut.CurrentTokenInfo(t.Context())
+		if err == nil {
+			t.Fatal("expected error when unreachable")
 		}
 	})
 }

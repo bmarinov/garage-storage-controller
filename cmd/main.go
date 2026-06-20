@@ -15,9 +15,11 @@
 package main
 
 import (
+	"context"
 	"crypto/tls"
 	"flag"
 	"os"
+	"time"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
@@ -39,6 +41,7 @@ import (
 	garagev1alpha1 "github.com/bmarinov/garage-storage-controller/api/v1alpha1"
 	"github.com/bmarinov/garage-storage-controller/internal/controller"
 	"github.com/bmarinov/garage-storage-controller/internal/garage"
+	"github.com/bmarinov/garage-storage-controller/internal/health"
 	// +kubebuilder:scaffold:imports
 )
 
@@ -199,6 +202,13 @@ func main() {
 		cfg.garageAPIToken,
 		garage.WithMetrics(garageMetrics),
 	)
+
+	signalCtx := ctrl.SetupSignalHandler()
+
+	preflightCtx, cancel := context.WithTimeout(signalCtx, 10*time.Second)
+	defer cancel()
+	health.PreflightCheck(preflightCtx, garageClient)
+
 	if err := controller.NewBucketReconciler(
 		mgr.GetClient(),
 		mgr.GetScheme(),
@@ -237,7 +247,7 @@ func main() {
 	}
 
 	setupLog.Info("starting manager")
-	if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {
+	if err := mgr.Start(signalCtx); err != nil {
 		setupLog.Error(err, "problem running manager")
 		os.Exit(1)
 	}
