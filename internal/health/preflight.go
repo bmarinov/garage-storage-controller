@@ -33,8 +33,8 @@ func PreflightCheck(ctx context.Context, garageAdm GarageAdminAuth) {
 	info, err := garageAdm.CurrentTokenInfo(ctx)
 	switch {
 	case err != nil:
-		log.Error(err, "garage admin API preflight failed, starting anyway; "+
-			"check GARAGE_API_ENDPOINT / GARAGE_API_TOKEN")
+		log.Info("garage admin API preflight failed, starting anyway; "+
+			"check GARAGE_API_ENDPOINT / GARAGE_API_TOKEN", "error", err)
 	case info.Expired:
 		log.Info("garage admin API reachable but token EXPIRED",
 			"token", info.Name, "expiration", info.Expiration)
