@@ -68,9 +68,9 @@ func (m *Metrics) Collectors() []prometheus.Collector {
 	return []prometheus.Collector{m.requests, m.duration, m.up}
 }
 
-// SetUp records whether the Garage admin API is currently reachable.
-func (m *Metrics) SetUp(ok bool) {
-	if ok {
+// SetAPIUp records whether the Garage admin API is currently reachable.
+func (m *Metrics) SetAPIUp(isUp bool) {
+	if isUp {
 		m.up.Set(1)
 		return
 	}
