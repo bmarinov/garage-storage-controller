@@ -27,6 +27,7 @@ import (
 type Metrics struct {
 	requests *prometheus.CounterVec
 	duration prometheus.Histogram
+	up       prometheus.Gauge
 }
 
 const (
@@ -52,12 +53,28 @@ func NewMetrics() *Metrics {
 				Help:      "Duration of Garage admin API requests in seconds.",
 				Buckets:   prometheus.DefBuckets,
 			}),
+		up: prometheus.NewGauge(
+			prometheus.GaugeOpts{
+				Namespace: metricsNamespace,
+				Subsystem: metricsSubsystem,
+				Name:      "up",
+				Help:      "Gauge for the Garage admin API: 1 reachable, 0 not.",
+			}),
 	}
 }
 
 // Collectors returns the metrics to register with a Prometheus registry.
 func (m *Metrics) Collectors() []prometheus.Collector {
-	return []prometheus.Collector{m.requests, m.duration}
+	return []prometheus.Collector{m.requests, m.duration, m.up}
+}
+
+// SetAPIUp records whether the Garage admin API is currently reachable.
+func (m *Metrics) SetAPIUp(isUp bool) {
+	if isUp {
+		m.up.Set(1)
+		return
+	}
+	m.up.Set(0)
 }
 
 func (m *Metrics) record(code string, d time.Duration) {

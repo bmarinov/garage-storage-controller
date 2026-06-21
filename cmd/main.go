@@ -246,6 +246,8 @@ func main() {
 		os.Exit(1)
 	}
 
+	go health.Run(signalCtx, garageClient, garageMetrics.SetAPIUp, 30*time.Second)
+
 	setupLog.Info("starting manager")
 	if err := mgr.Start(signalCtx); err != nil {
 		setupLog.Error(err, "problem running manager")

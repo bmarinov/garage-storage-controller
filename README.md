@@ -414,6 +414,25 @@ See [config/rbac/base/role_namespace_access.yaml](config/rbac/namespaces/base/ro
 
 **Note**: The controller does not need cluster-wide access to ConfigMaps or Secrets. Use namespace roles.
 
+# Observability
+
+## Metrics
+The controller exposes Prometheus metrics for its Garage admin API dependency:
+
+| Metric | Type | Description |
+|---|---|---|
+| `garage_controller_admin_api_up` | Gauge | `1` when the Garage admin API is reachable, `0` otherwise. On a 30s refresh. |
+| `garage_controller_admin_api_requests_total` | Counter | Admin API requests; labels: `status_class` (`2xx`/`3xx`/`4xx`/`5xx` or `error`). |
+| `garage_controller_admin_api_request_duration_seconds` | Histogram | Admin API request latency in seconds. |
+
+## Logs
+
+Logs follow controller-runtime conventions, using info and error levels.
+
+Relevant for operations:
+- Preflight check logged on startup (config validation and auth).
+- Garage connectivity loss logs at `Error` and recovery at `Info`.
+
 # Development
 
 ## Project setup
