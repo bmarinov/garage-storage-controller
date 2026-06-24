@@ -29,6 +29,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/tools/record"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	corev1 "k8s.io/api/core/v1"
@@ -63,7 +64,7 @@ var _ = Describe("Bucket Controller", func() {
 			By("reconciling")
 			var s3Fake = newS3APIFake()
 			s3Endpoint := "https://foo.bar:3456/baz"
-			controllerReconciler := NewBucketReconciler(k8sClient, k8sClient.Scheme(), s3Fake, s3Endpoint, nil)
+			controllerReconciler := NewBucketReconciler(k8sClient, k8sClient.Scheme(), s3Fake, s3Endpoint, nil, record.NewFakeRecorder(10))
 
 			_, err := controllerReconciler.Reconcile(ctx,
 				reconcile.Request{NamespacedName: namespacedName(bucket.ObjectMeta)})
@@ -107,7 +108,7 @@ var _ = Describe("Bucket Controller", func() {
 			Expect(k8sClient.Create(ctx, &resource)).To(Succeed())
 			var s3Fake = newS3APIFake()
 			s3API := "https://s3.test.fooz:3909"
-			sut := NewBucketReconciler(k8sClient, k8sClient.Scheme(), s3Fake, s3API, nil)
+			sut := NewBucketReconciler(k8sClient, k8sClient.Scheme(), s3Fake, s3API, nil, record.NewFakeRecorder(10))
 
 			// Note: need to reconcile with Eventually once finalizer is added:
 			_, err := sut.Reconcile(ctx,
@@ -220,6 +221,68 @@ var _ = Describe("Bucket Controller", func() {
 			Expect(readyCondition).ToNot(BeNil())
 			Expect(readyCondition.Status).To(Equal(metav1.ConditionFalse), "top-level Ready must be false")
 			Expect(readyCondition.Reason).To(Equal(ReasonConfigMapNameConflict), "should reflect underlying configuration conflict")
+		})
+
+		It("should emit BucketCreated event when bucket is first created in Garage", func() {
+			By("creating a Bucket resource")
+			bucket := newBucket(namespace)
+			Expect(k8sClient.Create(ctx, &bucket)).To(Succeed())
+
+			By("reconciling against a fresh Garage fake")
+			rec := record.NewFakeRecorder(10)
+			s3Fake := newS3APIFake()
+			sut := NewBucketReconciler(k8sClient, k8sClient.Scheme(), s3Fake, "https://s3.test:9000", nil, rec)
+			_, err := sut.Reconcile(ctx, reconcile.Request{NamespacedName: namespacedName(bucket.ObjectMeta)})
+			Expect(err).ToNot(HaveOccurred())
+
+			By("receiving BucketCreated event")
+			Eventually(rec.Events).Should(Receive(ContainSubstring("Normal BucketCreated")))
+		})
+
+		It("should not emit events when bucket already exists in Garage", func() {
+			By("creating a Bucket resource")
+			bucket := newBucket(namespace)
+			Expect(k8sClient.Create(ctx, &bucket)).To(Succeed())
+
+			By("pre-seeding existing bucket in the Garage instance")
+			rec := record.NewFakeRecorder(10)
+			s3Fake := newS3APIFake()
+			alias := suffixedResourceName(bucket.Spec.Name, bucket.ObjectMeta)
+			s3Fake.buckets["existing-id"] = s3.Bucket{ID: "existing-id", GlobalAliases: []string{alias}}
+			sut := NewBucketReconciler(k8sClient, k8sClient.Scheme(), s3Fake, "https://s3.test:9001", nil, rec)
+
+			By("reconciling")
+			_, err := sut.Reconcile(ctx, reconcile.Request{NamespacedName: namespacedName(bucket.ObjectMeta)})
+			Expect(err).ToNot(HaveOccurred())
+
+			By("asserting no events were emitted")
+			Consistently(rec.Events).ShouldNot(Receive())
+		})
+
+		It("should emit BucketCreated exactly once across several reconciles", func() {
+			By("creating a Bucket")
+			bucket := newBucket(namespace)
+			Expect(k8sClient.Create(ctx, &bucket)).To(Succeed())
+
+			By("reconciling and creating the Garage bucket")
+			rec := record.NewFakeRecorder(10)
+			s3Fake := newS3APIFake()
+			sut := NewBucketReconciler(k8sClient, k8sClient.Scheme(), s3Fake, "https://s3.test:9000", nil, rec)
+			_, err := sut.Reconcile(ctx, reconcile.Request{NamespacedName: namespacedName(bucket.ObjectMeta)})
+			Expect(err).ToNot(HaveOccurred())
+			Eventually(rec.Events).Should(Receive(ContainSubstring("Normal BucketCreated")))
+
+			By("updating the spec with a maxSize quota")
+			Expect(k8sClient.Get(ctx, namespacedName(bucket.ObjectMeta), &bucket)).To(Succeed())
+			bucket.Spec.MaxSize = resource.MustParse("500Mi")
+			Expect(k8sClient.Update(ctx, &bucket)).To(Succeed())
+
+			By("reconciling to apply the quota update")
+			_, err = sut.Reconcile(ctx, reconcile.Request{NamespacedName: namespacedName(bucket.ObjectMeta)})
+			Expect(err).ToNot(HaveOccurred())
+
+			By("emitting no further events")
+			Consistently(rec.Events).ShouldNot(Receive())
 		})
 
 		It("recovers from conflict once configMapName is set", func() {
@@ -691,7 +754,7 @@ func shouldReconcile(controller *BucketReconciler, obj metav1.ObjectMeta) {
 func setupBucket() (*BucketReconciler, *s3APIFake, *permissionClientFake) {
 	s3API := newS3APIFake()
 	perm := newPermissionClientFake()
-	sut := NewBucketReconciler(k8sClient, k8sClient.Scheme(), s3API, "https://s3.foo/bar:123", perm)
+	sut := NewBucketReconciler(k8sClient, k8sClient.Scheme(), s3API, "https://s3.foo/bar:123", perm, record.NewFakeRecorder(10))
 	return sut, s3API, perm
 }
 
