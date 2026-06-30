@@ -16,6 +16,9 @@ The following vulnerabilities are in transitive dependencies with no upstream fi
 |----|-----|---------|--------|
 | GO-2026-4887 | CVE-2026-34040 | `github.com/docker/docker` | Test dependency; no fix released. Tracked: [#72](https://github.com/bmarinov/garage-storage-controller/issues/72) |
 | GO-2026-4883 | CVE-2026-33997 | `github.com/docker/docker` | Test dependency; no fix released. Tracked: [#72](https://github.com/bmarinov/garage-storage-controller/issues/72) |
+| GO-2026-5746 | CVE-2026-41567 | `github.com/docker/docker` | Test dependency; no fix released. Tracked: [#72](https://github.com/bmarinov/garage-storage-controller/issues/72) |
+| GO-2026-5668 | CVE-2026-41568 | `github.com/docker/docker` | Test dependency; no fix released. Tracked: [#72](https://github.com/bmarinov/garage-storage-controller/issues/72) |
+| GO-2026-5617 | CVE-2026-42306 | `github.com/docker/docker` | Test dependency; no fix released. Tracked: [#72](https://github.com/bmarinov/garage-storage-controller/issues/72) |
 
 `docker/docker` is a transitive dependency for `testcontainers-go`. Only used in integration tests.
 

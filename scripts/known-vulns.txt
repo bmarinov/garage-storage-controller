@@ -1,0 +1,14 @@
+# Vulnerabilities excluded due to false positives or until upstream ships a fix.
+# Each entry must link to a tracking issue.
+# One vuln ID per line. Lines starting with # are ignored.
+
+# github.com/docker/docker - transitive dependency via testcontainers-go.
+# All five are daemon-side vulnerabilities; the operator binary does not invoke
+# docker cp or the archive API. Reachability traces are type-graph artefacts.
+# No fixed version available (Fixed in: N/A).
+# https://github.com/bmarinov/garage-storage-controller/issues/72
+GO-2026-4887
+GO-2026-4883
+GO-2026-5746
+GO-2026-5668
+GO-2026-5617

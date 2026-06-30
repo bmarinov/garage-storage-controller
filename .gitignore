@@ -19,3 +19,5 @@
 !hack/license-header.txt
 
 !**/integrationtests/garage.toml
+
+!scripts/known-vulns.txt
