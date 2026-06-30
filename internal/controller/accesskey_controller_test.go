@@ -435,6 +435,49 @@ var _ = Describe("AccessKey Controller", func() {
 			err = k8sClient.Get(ctx, objID, &accessKey)
 			Expect(err).To(Satisfy(apierrors.IsNotFound))
 		})
+		It("deletes orphaned external key on a lost status write", func() {
+			sut, externalAPI := setup()
+
+			accessKey := garagev1alpha1.AccessKey{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      fixture.RandAlpha(10),
+					Namespace: namespace,
+				},
+				Spec: garagev1alpha1.AccessKeySpec{
+					SecretName: fixture.RandAlpha(10),
+				},
+			}
+			Expect(k8sClient.Create(ctx, &accessKey)).To(Succeed())
+			objID := types.NamespacedName{Name: accessKey.Name, Namespace: accessKey.Namespace}
+
+			By("reconcile creates the garage key, finalizer and status")
+			_, err := sut.Reconcile(ctx, reconcile.Request{NamespacedName: objID})
+			Expect(err).ToNot(HaveOccurred())
+			Expect(externalAPI.keys).To(HaveLen(1), "garage key created")
+
+			By("simulating a lost status write due to e.g. missing permissions (issue #110)")
+			Expect(k8sClient.Get(ctx, objID, &accessKey)).To(Succeed())
+			Expect(accessKey.Finalizers).To(ContainElement(finalizerName))
+			accessKey.Status.AccessKeyID = ""
+			Expect(k8sClient.Status().Update(ctx, &accessKey)).To(Succeed())
+
+			By("deleting AccessKey resource")
+			Expect(k8sClient.Delete(ctx, &accessKey)).To(Succeed())
+
+			Eventually(func(g Gomega) bool {
+				g.Expect(k8sClient.Get(ctx, objID, &accessKey)).To(Succeed())
+				return !accessKey.DeletionTimestamp.IsZero()
+			}).Should(BeTrue(), "resource should exist with deletion timestamp")
+
+			By("reconciling AccessKey")
+			_, err = sut.Reconcile(ctx, reconcile.Request{NamespacedName: objID})
+			Expect(err).ToNot(HaveOccurred())
+
+			By("Garage external key and k8s resource removed")
+			Expect(externalAPI.keys).To(BeEmpty(), "should not leave orphaned key in garage")
+			err = k8sClient.Get(ctx, objID, &accessKey)
+			Expect(err).To(Satisfy(apierrors.IsNotFound))
+		})
 		It("sets status when secret with name already exists", func() {
 			sut, _ := setup()
 
