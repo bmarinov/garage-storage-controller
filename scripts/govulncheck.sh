@@ -1,26 +1,23 @@
 #!/usr/bin/env bash
 # Wrapper for govulncheck. Allows excluding specific vulnerabilities.
 # Issue at https://github.com/golang/go/issues/59507
+#
+# Usage: govulncheck.sh [exclude-file]
+#   exclude-file: file with vuln IDs to exclude, one per line (default: known-vulns.txt next to this script)
 set -Eeuo pipefail
 
-# Vulnerabilities excluded until upstream ships a fix.
-# Each entry must link to a tracking issue.
-excludeVulns="$(jq -nc '[
-  # docker (testcontainers dependency), no fix
-  # Issue: https://github.com/bmarinov/garage-storage-controller/issues/72
-  "GO-2026-4887", # CVE-2026-34040 AuthZ plugin bypass
-  "GO-2026-4883", # CVE-2026-33997 plugin privilege off-by-one
+script_dir="$(cd "$(dirname "$0")" && pwd)"
+repo_root="$(cd "$script_dir/.." && pwd)"
+exclude_file="${1:-$script_dir/known-vulns.txt}"
+exclude_file="$(cd "$(dirname "$exclude_file")" && pwd)/$(basename "$exclude_file")"
 
-  empty
-]')"
+cd "$repo_root"
+
+# Build JSON array of excluded vuln IDs from the text file (strips comments and blank lines).
+excludeVulns="$(grep -v '^#' "$exclude_file" | grep -v '^[[:space:]]*$' | jq -Rnc '[inputs]')"
 export excludeVulns
 
-# nothing to filter if govulncheck passes:
-if govulncheck ./...; then
-  exit 0
-fi
-
-json="$(govulncheck -json ./...)"
+json="$(govulncheck -json ./... || true)"
 
 vulns="$(jq <<<"$json" -cs '
   (map(.osv // empty | {key: .id, value: .}) | from_entries) as $meta

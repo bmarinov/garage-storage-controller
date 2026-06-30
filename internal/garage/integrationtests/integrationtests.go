@@ -29,7 +29,6 @@ import (
 	testutil "github.com/bmarinov/garage-storage-controller/internal/tests"
 
 	"github.com/docker/docker/pkg/stdcopy"
-	"github.com/docker/go-connections/nat"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
 )
@@ -68,7 +67,7 @@ func NewGarageEnv() Environment {
 			},
 		),
 		testcontainers.WithExposedPorts(adminPort),
-		testcontainers.WithWaitStrategy(wait.ForListeningPort(nat.Port(adminPort))),
+		testcontainers.WithWaitStrategy(wait.ForListeningPort(adminPort)),
 		testcontainers.WithFiles(
 			testcontainers.ContainerFile{
 				Reader:            bytes.NewBuffer(garageConfig),
@@ -97,7 +96,7 @@ func NewGarageEnv() Environment {
 	if err != nil {
 		panic(err)
 	}
-	portProto, err := container.MappedPort(ctx, nat.Port(adminPort))
+	portProto, err := container.MappedPort(ctx, adminPort)
 	if err != nil {
 		panic(err)
 	}
