@@ -97,19 +97,23 @@ func (r *AccessKeyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		}
 	} else {
 		if controllerutil.ContainsFinalizer(&accessKey, finalizerName) {
-			err = r.accessKey.Delete(ctx, accessKey.Status.AccessKeyID)
-
-			if err != nil && !errors.Is(err, s3.ErrResourceNotFound) {
-				return ctrl.Result{}, err
-			}
-
-			_ = controllerutil.RemoveFinalizer(&accessKey, finalizerName)
-			err = r.client.Update(ctx, &accessKey)
+			id, err := r.resolveExtKeyID(ctx, accessKey)
 			if err != nil {
 				return ctrl.Result{}, err
 			}
+			if id != "" {
+				err = r.accessKey.Delete(ctx, id)
+				if err != nil && !errors.Is(err, s3.ErrResourceNotFound) {
+					return ctrl.Result{}, err
+				}
+			}
+
+			_ = controllerutil.RemoveFinalizer(&accessKey, finalizerName)
+			if err = r.client.Update(ctx, &accessKey); err != nil {
+				return ctrl.Result{}, err
+			}
 		}
-		return ctrl.Result{}, err
+		return ctrl.Result{}, nil
 	}
 
 	orig := accessKey.Status.DeepCopy()
@@ -203,6 +207,23 @@ func (r *AccessKeyReconciler) cleanupOldSecret(ctx context.Context, secretName, 
 		return fmt.Errorf("deleting secret '%s/%s': %w", namespace, secretName, err)
 	}
 	return nil
+}
+
+// resolveExtKeyID returns the external key ID to delete, or empty if not found.
+// The ID from the AccessKey status has priority.
+// Performs a lookup by name in case the key ID is not available.
+func (r *AccessKeyReconciler) resolveExtKeyID(ctx context.Context, resource garagev1alpha1.AccessKey) (string, error) {
+	if resource.Status.AccessKeyID != "" {
+		return resource.Status.AccessKeyID, nil
+	}
+	key, err := r.accessKey.Lookup(ctx, namespacedResourceName(resource.ObjectMeta))
+	if errors.Is(err, s3.ErrResourceNotFound) {
+		return "", nil
+	}
+	if err != nil {
+		return "", fmt.Errorf("looking up key for deletion: %w", err)
+	}
+	return key.ID, nil
 }
 
 func (r *AccessKeyReconciler) ensureExternalKey(ctx context.Context, resource garagev1alpha1.AccessKey) (s3.AccessKey, error) {
