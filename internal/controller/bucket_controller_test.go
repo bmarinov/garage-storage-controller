@@ -285,6 +285,22 @@ var _ = Describe("Bucket Controller", func() {
 			Consistently(rec.Events).ShouldNot(Receive())
 		})
 
+		It("should emit BucketCreateFailed event when creation fails in Garage", func() {
+			By("creating a Bucket resource")
+			bucket := newBucket(namespace)
+			Expect(k8sClient.Create(ctx, &bucket)).To(Succeed())
+
+			By("reconciling against a Garage fake that fails to create the bucket")
+			rec := record.NewFakeRecorder(10)
+			s3Fake := failCreateS3APIFake{s3APIFake: newS3APIFake(), err: errors.New("garage unavailable")}
+			sut := NewBucketReconciler(k8sClient, k8sClient.Scheme(), s3Fake, "https://s3.test:9000", nil, rec)
+			_, err := sut.Reconcile(ctx, reconcile.Request{NamespacedName: namespacedName(bucket.ObjectMeta)})
+			Expect(err).To(HaveOccurred())
+
+			By("receiving BucketCreateFailed event")
+			Eventually(rec.Events).Should(Receive(ContainSubstring("Warning BucketCreateFailed")))
+		})
+
 		It("recovers from conflict once configMapName is set", func() {
 			conflictingName := "foobar"
 			originalData := map[string]string{"foo": "bar"}
@@ -821,3 +837,16 @@ func (s *s3APIFake) Get(ctx context.Context, globalAlias string) (s3.Bucket, err
 }
 
 var _ BucketClient = &s3APIFake{}
+
+// failCreateS3APIFake wraps the fake Bucket client and forces Create to fail.
+// Get and Update are unchanged.
+type failCreateS3APIFake struct {
+	*s3APIFake
+	err error
+}
+
+func (f failCreateS3APIFake) Create(context.Context, string) (s3.Bucket, error) {
+	return s3.Bucket{}, f.err
+}
+
+var _ BucketClient = failCreateS3APIFake{}

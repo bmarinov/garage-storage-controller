@@ -303,6 +303,7 @@ func (r *BucketReconciler) resolveNewBucket(ctx context.Context, bucket *garagev
 			s3Bucket, err = r.bucket.Create(ctx, alias)
 			if err != nil {
 				markBucketNotReady(bucket, "CreateFailed", "Failed to create bucket '%s': %v", alias, err)
+				r.recorder.Eventf(bucket, corev1.EventTypeWarning, ReasonBucketCreateFailed, "Failed to create Garage bucket %q: %v", alias, err)
 				return s3.Bucket{}, "", fmt.Errorf("create new bucket: %w", err)
 			}
 			r.recorder.Eventf(bucket, corev1.EventTypeNormal, ReasonBucketCreated, "Created Garage bucket %q", alias)
