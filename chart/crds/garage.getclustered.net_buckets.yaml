@@ -54,7 +54,7 @@ spec:
               existingBucket:
                 description: |-
                   ExistingBucket identifies a pre-existing Garage bucket to import or reclaim.
-                  Mutually exclusive with Name.
+                  Mutually exclusive with Name and NameOverride.
                 properties:
                   name:
                     description: Name is the exact bucket name as it exists in Garage.
@@ -99,13 +99,28 @@ spec:
                 x-kubernetes-validations:
                 - message: spec.name is immutable
                   rule: self == oldSelf
+              nameOverride:
+                description: |-
+                  NameOverride is the exact global alias assigned to a newly created Garage bucket.
+                  Mutually exclusive with Name and ExistingBucket.
+
+                  The controller does not adopt an existing bucket with this alias. Once the bucket ID
+                  is recorded in status, the controller will not recreate a missing bucket.
+                maxLength: 63
+                minLength: 3
+                type: string
+                x-kubernetes-validations:
+                - message: spec.nameOverride is immutable
+                  rule: self == oldSelf
             type: object
             x-kubernetes-validations:
-            - message: exactly one of spec.name or spec.existingBucket must be set
-              rule: (has(self.name) && size(self.name) > 0) != has(self.existingBucket)
             - message: spec.existingBucket.name is immutable
               rule: '!has(self.existingBucket) || !has(oldSelf.existingBucket) ||
                 self.existingBucket.name == oldSelf.existingBucket.name'
+            - message: exactly one of the fields in [name nameOverride existingBucket]
+                must be set
+              rule: '[has(self.name),has(self.nameOverride),has(self.existingBucket)].filter(x,x==true).size()
+                == 1'
           status:
             description: status defines the observed state of Bucket
             properties:

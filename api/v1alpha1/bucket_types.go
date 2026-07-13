@@ -41,7 +41,7 @@ type ExistingBucketSpec struct {
 
 // BucketSpec defines the desired state of Bucket
 //
-// +kubebuilder:validation:XValidation:rule="(has(self.name) && size(self.name) > 0) != has(self.existingBucket)",message="exactly one of spec.name or spec.existingBucket must be set"
+// +kubebuilder:validation:ExactlyOneOf=name;nameOverride;existingBucket
 // +kubebuilder:validation:XValidation:rule="!has(self.existingBucket) || !has(oldSelf.existingBucket) || self.existingBucket.name == oldSelf.existingBucket.name",message="spec.existingBucket.name is immutable"
 type BucketSpec struct {
 	// Name is the desired bucket name.
@@ -54,8 +54,20 @@ type BucketSpec struct {
 	// +optional
 	Name string `json:"name,omitempty"`
 
+	// NameOverride is the exact global alias assigned to a newly created Garage bucket.
+	// Mutually exclusive with Name and ExistingBucket.
+	//
+	// The controller does not adopt an existing bucket with this alias. Once the bucket ID
+	// is recorded in status, the controller will not recreate a missing bucket.
+	//
+	// +kubebuilder:validation:MinLength=3
+	// +kubebuilder:validation:MaxLength=63
+	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="spec.nameOverride is immutable"
+	// +optional
+	NameOverride string `json:"nameOverride,omitempty"`
+
 	// ExistingBucket identifies a pre-existing Garage bucket to import or reclaim.
-	// Mutually exclusive with Name.
+	// Mutually exclusive with Name and NameOverride.
 	// +optional
 	ExistingBucket *ExistingBucketSpec `json:"existingBucket,omitempty"`
 

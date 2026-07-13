@@ -152,7 +152,11 @@ func (r *BucketReconciler) reconcileBucket(ctx context.Context, bucket *garagev1
 			}, nil
 		}
 	} else {
-		s3Bucket, alias, err = r.resolveNewBucket(ctx, bucket)
+		if bucket.Spec.NameOverride != "" {
+			s3Bucket, alias, err = r.resolveNewNameOverrideBucket(ctx, bucket)
+		} else {
+			s3Bucket, alias, err = r.resolveNewBucket(ctx, bucket)
+		}
 		if err != nil {
 			return ctrl.Result{}, err
 		}
@@ -312,6 +316,47 @@ func (r *BucketReconciler) resolveNewBucket(ctx context.Context, bucket *garagev
 			return s3.Bucket{}, "", fmt.Errorf("retrieving existing bucket: %w", err)
 		}
 	}
+	return s3Bucket, alias, nil
+}
+
+func (r *BucketReconciler) resolveNewNameOverrideBucket(ctx context.Context, bucket *garagev1alpha1.Bucket) (s3.Bucket, string, error) {
+	alias := bucket.Spec.NameOverride
+	s3Bucket, err := r.bucket.Get(ctx, alias)
+	if err != nil {
+		if !errors.Is(err, s3.ErrResourceNotFound) {
+			markBucketNotReady(bucket, "UnknownState", "S3 API error: %v", err)
+			return s3.Bucket{}, "", fmt.Errorf("retrieving existing bucket: %w", err)
+		}
+
+		if bucket.Status.BucketID != "" {
+			markBucketNotReady(bucket, "BucketMissing", "Bucket %q is missing: it has been deleted and will not be recreated", alias)
+			r.recorder.Eventf(bucket, corev1.EventTypeWarning, ReasonBucketMissing, "Bucket %q is missing: it has been deleted and will not be recreated", alias)
+			return s3.Bucket{}, "", fmt.Errorf("bucket %q is missing: it has been deleted and will not be recreated", alias)
+		}
+
+		s3Bucket, err = r.bucket.Create(ctx, alias)
+		if err != nil {
+			markBucketNotReady(bucket, "CreateFailed", "failed to create bucket '%s': %v", alias, err)
+			r.recorder.Eventf(bucket, corev1.EventTypeWarning, ReasonBucketCreateFailed, "failed to create Garage bucket %q: %v", alias, err)
+			return s3.Bucket{}, "", fmt.Errorf("create new bucket: %w", err)
+		}
+
+		r.recorder.Eventf(bucket, corev1.EventTypeNormal, ReasonBucketCreated, "Created Garage bucket %q", alias)
+		return s3Bucket, alias, nil
+	}
+
+	if bucket.Status.BucketID == "" {
+		markBucketNotReady(bucket, "CreateFailed", "Failed to create bucket %q: bucket already exists. Use spec.existingBucket to adopt it", alias)
+		r.recorder.Eventf(bucket, corev1.EventTypeWarning, ReasonBucketCreateFailed, "Failed to create bucket %q: bucket already exists. Use spec.existingBucket to adopt it", alias)
+		return s3.Bucket{}, "", fmt.Errorf("failed to create bucket %q: bucket already exists. Use spec.existingBucket to adopt it", alias)
+	}
+
+	if bucket.Status.BucketID != s3Bucket.ID {
+		markBucketNotReady(bucket, "BucketMissing", "Bucket %q is missing: its bucket ID changed and it will not be adopted", alias)
+		r.recorder.Eventf(bucket, corev1.EventTypeWarning, ReasonBucketMissing, "Bucket %q is missing: its bucket ID changed and it will not be adopted", alias)
+		return s3.Bucket{}, "", fmt.Errorf("bucket %q is missing: its bucket ID changed and it will not be adopted", alias)
+	}
+
 	return s3Bucket, alias, nil
 }
 
