@@ -194,6 +194,11 @@ func (r *BucketReconciler) reconcileBucket(ctx context.Context, bucket *garagev1
 			)
 			return ctrl.Result{}, nil
 		}
+		if apierrors.IsForbidden(err) {
+			r.recorder.Eventf(bucket, corev1.EventTypeWarning, ReasonConfigMapAccessForbidden,
+				"Cannot access ConfigMaps in namespace %q: %v. %s",
+				bucket.Namespace, err, rbacRemedyMsg)
+		}
 		updateBucketCMCondition(bucket, metav1.ConditionFalse,
 			"ConfigMapCreateError",
 			"Unable to create ConfigMap: %v",
@@ -321,6 +326,14 @@ func (r *BucketReconciler) resolveExistingBucket(ctx context.Context, bucket *ga
 	var secret corev1.Secret
 	err := r.client.Get(ctx, client.ObjectKey{Namespace: bucket.Namespace, Name: spec.OwnerKeySecret}, &secret)
 	if err != nil {
+		if apierrors.IsForbidden(err) {
+			r.recorder.Eventf(bucket, corev1.EventTypeWarning, ReasonSecretAccessForbidden,
+				"Cannot access Secrets in namespace %q: %v. %s",
+				bucket.Namespace, err, rbacRemedyMsg)
+			markBucketNotReady(bucket, ReasonSecretAccessForbidden,
+				"Cannot access Secret %q: %v", spec.OwnerKeySecret, err)
+			return s3.Bucket{}, "", fmt.Errorf("get owner key secret: %w", err)
+		}
 		markBucketNotReady(bucket, ReasonOwnerKeySecretNotFound, "Secret %q not found: %v", spec.OwnerKeySecret, err)
 		return s3.Bucket{}, "", fmt.Errorf("get owner key secret: %w", err)
 	}

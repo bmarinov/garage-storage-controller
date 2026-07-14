@@ -25,6 +25,7 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/tools/record"
 
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -47,13 +48,20 @@ type AccessKeyReconciler struct {
 	client    client.Client
 	scheme    *runtime.Scheme
 	accessKey AccessKeyManager
+	recorder  record.EventRecorder
 }
 
-func NewAccessKeyReconciler(c client.Client, s *runtime.Scheme, keyMgr AccessKeyManager) *AccessKeyReconciler {
+func NewAccessKeyReconciler(
+	c client.Client,
+	s *runtime.Scheme,
+	keyMgr AccessKeyManager,
+	recorder record.EventRecorder,
+) *AccessKeyReconciler {
 	return &AccessKeyReconciler{
 		client:    c,
 		scheme:    s,
 		accessKey: keyMgr,
+		recorder:  recorder,
 	}
 }
 
@@ -75,6 +83,7 @@ type AccessKeyManager interface {
 // +kubebuilder:rbac:groups=garage.getclustered.net,resources=accesskeys,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=garage.getclustered.net,resources=accesskeys/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=garage.getclustered.net,resources=accesskeys/finalizers,verbs=update
+// +kubebuilder:rbac:groups="",resources=events,verbs=create;patch
 
 func (r *AccessKeyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	var accessKey garagev1alpha1.AccessKey
@@ -171,6 +180,11 @@ func (r *AccessKeyReconciler) reconcileAccessKey(ctx context.Context, key *Acces
 		if errors.Is(err, errNameConflict) {
 			key.markNotReady(KeySecretReady, ReasonSecretNameConflict, "Conflict: %s", err.Error())
 			return nil
+		}
+		if apierrors.IsForbidden(err) {
+			r.recorder.Eventf(key.Object, corev1.EventTypeWarning, ReasonSecretAccessForbidden,
+				"Cannot access Secrets in namespace %q: %v. %s",
+				key.Object.Namespace, err, rbacRemedyMsg)
 		}
 		key.markNotReady(KeySecretReady, "SecretSetupFailed", "Failed to set up secret for credentials: %v", err)
 		return err
