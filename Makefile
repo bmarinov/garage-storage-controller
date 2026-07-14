@@ -44,7 +44,15 @@ help: ## Display this help.
 .PHONY: manifests
 manifests: controller-gen ## Generate WebhookConfiguration, ClusterRole and CustomResourceDefinition objects.
 	"$(CONTROLLER_GEN)" rbac:roleName=garage-controller-role crd webhook paths="./..." output:crd:artifacts:config=config/crd/bases
+
+# The chart is released separately from the app. App updates should not touch chart/**
+# Making modifications without bumping chart version will trigger a check and block the PR.
+# Run this in the chart release PR only.
+.PHONY: helm-sync
+helm-sync: manifests ## Sync the chart with config/ and report any RBAC left to patch by hand.
 	cp config/crd/bases/*.yaml chart/crds/
+	helm lint chart/ --strict -f "chart/values.test.yaml"
+	go test -tags chart ./test/chart/
 
 .PHONY: generate
 generate: controller-gen license-headers ## Generate code containing DeepCopy, DeepCopyInto, and DeepCopyObject method implementations.
@@ -136,12 +144,6 @@ docker-buildx: ## Build multiarch docker image for the manager (set PUSH=true to
 	- $(CONTAINER_TOOL) buildx build $(if $(PUSH),--push) --platform=$(PLATFORMS) --tag ${IMG} $(LABEL_ARGS) .
 	- $(CONTAINER_TOOL) buildx rm garage-storage-controller-builder
 
-.PHONY: build-installer
-build-installer: manifests generate kustomize ## Generate a consolidated YAML with CRDs and deployment.
-	mkdir -p dist
-	cd config/manager && "$(KUSTOMIZE)" edit set image controller=${IMG}
-	"$(KUSTOMIZE)" build config/overlays/e2e > dist/install.yaml
-
 .PHONY: tag
 tag:
 	@if [ -z "$(TAG)" ]; then \
@@ -170,7 +172,7 @@ uninstall: manifests kustomize ## Uninstall CRDs from the K8s cluster specified 
 
 .PHONY: deploy
 deploy: manifests kustomize ## Deploy controller to the K8s cluster specified in ~/.kube/config.
-	cd config/manager && "$(KUSTOMIZE)" edit set image controller=${IMG}
+	# The image is pinned in the overlay:
 	"$(KUSTOMIZE)" build config/overlays/e2e | "$(KUBECTL)" apply -f -
 
 .PHONY: undeploy
