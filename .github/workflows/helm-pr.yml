@@ -35,4 +35,4 @@ jobs:
         run: go test -tags chart ./test/chart/
 
       - name: Helm lint
-        run: helm lint chart/
+        run: helm lint chart/ --strict -f "chart/values.test.yaml"
