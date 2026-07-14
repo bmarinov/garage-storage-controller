@@ -102,6 +102,49 @@ var _ = Describe("Bucket Controller", func() {
 			}).Should(Succeed())
 		})
 
+		It("creates an external S3 bucket matching spec.nameOverride", func() {
+			By("creating a Bucket custom resource")
+			bucket := newBucket(namespace)
+			bucket.Spec.Name = ""
+			bucket.Spec.NameOverride = fixture.RandAlpha(8)
+			Expect(k8sClient.Create(ctx, &bucket)).To(Succeed())
+
+			By("reconciling")
+			s3Fake := newS3APIFake()
+			s3Endpoint := "https://foo.bar:3456/baz"
+			controllerReconciler := NewBucketReconciler(k8sClient, k8sClient.Scheme(), s3Fake, s3Endpoint, nil, record.NewFakeRecorder(10))
+
+			_, err := controllerReconciler.Reconcile(ctx,
+				reconcile.Request{NamespacedName: namespacedName(bucket.ObjectMeta)})
+			Expect(err).ShouldNot(HaveOccurred())
+
+			By("waiting for external bucket to be provisioned")
+			Eventually(func(g Gomega) {
+				g.Expect(k8sClient.Get(ctx, namespacedName(bucket.ObjectMeta), &bucket)).To(Succeed())
+				g.Expect(checkCondition(bucket.Status.Conditions, Ready, metav1.ConditionTrue)).To(Succeed())
+				bucketCond := meta.FindStatusCondition(bucket.Status.Conditions, Ready)
+				g.Expect(bucketCond.ObservedGeneration).To(Equal(bucket.Generation))
+			}).Should(Succeed())
+
+			By("retrieving bucket with name override")
+			expectedName := bucket.Spec.NameOverride
+			created, err := s3Fake.Get(ctx, expectedName)
+			Expect(err).ToNot(HaveOccurred(), "bucket should exist: %s", expectedName)
+			Expect(created.GlobalAliases).To(ContainElement(expectedName))
+
+			By("creating a ConfigMap with bucket details")
+			expectedCMName := bucket.Name
+			Eventually(func(g Gomega) {
+				var configmap corev1.ConfigMap
+				g.Expect(k8sClient.Get(ctx,
+					types.NamespacedName{Namespace: namespace, Name: expectedCMName},
+					&configmap)).To(Succeed())
+
+				g.Expect(configmap.Data[configMapKeyBucketName]).To(Equal(bucket.Spec.NameOverride))
+				g.Expect(configmap.Data[configMapKeyEndpoint]).To(Equal(s3Endpoint))
+			}).Should(Succeed())
+		})
+
 		It("should create ConfigMap with connection details", func() {
 			By("creating the bucket")
 			resource := newBucket(namespace)
@@ -259,6 +302,52 @@ var _ = Describe("Bucket Controller", func() {
 			Consistently(rec.Events).ShouldNot(Receive())
 		})
 
+		It("allows a bound nameOverride bucket", func() {
+			By("creating a Bucket resource")
+			bucket := newBucket(namespace)
+			bucket.Spec.Name = ""
+			bucket.Spec.NameOverride = fixture.RandAlpha(63)
+			Expect(k8sClient.Create(ctx, &bucket)).To(Succeed())
+			bucket.Status.BucketID = "existing-id"
+			Expect(k8sClient.Status().Update(ctx, &bucket)).To(Succeed())
+
+			By("pre-seeding existing bucket in the Garage instance")
+			rec := record.NewFakeRecorder(10)
+			s3Fake := newS3APIFake()
+			alias := bucket.Spec.NameOverride
+			s3Fake.buckets["existing-id"] = s3.Bucket{ID: "existing-id", GlobalAliases: []string{alias}}
+			sut := NewBucketReconciler(k8sClient, k8sClient.Scheme(), s3Fake, "https://s3.test:9001", nil, rec)
+
+			By("reconciling")
+			_, err := sut.Reconcile(ctx, reconcile.Request{NamespacedName: namespacedName(bucket.ObjectMeta)})
+			Expect(err).ToNot(HaveOccurred())
+
+			By("asserting no events were emitted")
+			Consistently(rec.Events).ShouldNot(Receive())
+		})
+
+		It("rejects an unbound nameOverride bucket that already exists", func() {
+			By("creating a Bucket resource")
+			bucket := newBucket(namespace)
+			bucket.Spec.Name = ""
+			bucket.Spec.NameOverride = fixture.RandAlpha(8)
+			Expect(k8sClient.Create(ctx, &bucket)).To(Succeed())
+
+			By("pre-seeding existing bucket in the Garage instance")
+			rec := record.NewFakeRecorder(10)
+			s3Fake := newS3APIFake()
+			alias := bucket.Spec.NameOverride
+			s3Fake.buckets["existing-id"] = s3.Bucket{ID: "existing-id", GlobalAliases: []string{alias}}
+			sut := NewBucketReconciler(k8sClient, k8sClient.Scheme(), s3Fake, "https://s3.test:9001", nil, rec)
+
+			By("reconciling")
+			_, err := sut.Reconcile(ctx, reconcile.Request{NamespacedName: namespacedName(bucket.ObjectMeta)})
+			By("asserting failure err was passed and event was emitted")
+			Expect(err).To(HaveOccurred())
+			Expect(err).Should(MatchError(ContainSubstring("failed")))
+			Eventually(rec.Events).Should(Receive(ContainSubstring("Warning BucketCreateFailed")))
+		})
+
 		It("should emit BucketCreated exactly once across several reconciles", func() {
 			By("creating a Bucket")
 			bucket := newBucket(namespace)
@@ -299,6 +388,52 @@ var _ = Describe("Bucket Controller", func() {
 
 			By("receiving BucketCreateFailed event")
 			Eventually(rec.Events).Should(Receive(ContainSubstring("Warning BucketCreateFailed")))
+		})
+
+		It("reports a nameOverride bucket with a changed ID as missing", func() {
+			By("creating a Bucket resource")
+			bucket := newBucket(namespace)
+			bucket.Spec.Name = ""
+			bucket.Spec.NameOverride = fixture.RandAlpha(63)
+			Expect(k8sClient.Create(ctx, &bucket)).To(Succeed())
+			bucket.Status.BucketID = "old-id"
+			Expect(k8sClient.Status().Update(ctx, &bucket)).To(Succeed())
+
+			By("pre-seeding existing bucket in the Garage instance")
+			rec := record.NewFakeRecorder(10)
+			s3Fake := newS3APIFake()
+			alias := bucket.Spec.NameOverride
+			s3Fake.buckets["existing-id"] = s3.Bucket{ID: "existing-id", GlobalAliases: []string{alias}}
+			sut := NewBucketReconciler(k8sClient, k8sClient.Scheme(), s3Fake, "https://s3.test:9001", nil, rec)
+
+			By("reconciling")
+			_, err := sut.Reconcile(ctx, reconcile.Request{NamespacedName: namespacedName(bucket.ObjectMeta)})
+			By("asserting failure err was passed and event was emitted")
+			Expect(err).To(HaveOccurred())
+			Expect(err).Should(MatchError(ContainSubstring("missing")))
+			Eventually(rec.Events).Should(Receive(ContainSubstring("missing")))
+		})
+
+		It("reports a missing bound nameOverride bucket", func() {
+			By("creating a Bucket resource")
+			bucket := newBucket(namespace)
+			bucket.Spec.Name = ""
+			bucket.Spec.NameOverride = fixture.RandAlpha(63)
+			Expect(k8sClient.Create(ctx, &bucket)).To(Succeed())
+			bucket.Status.BucketID = "old-id"
+			Expect(k8sClient.Status().Update(ctx, &bucket)).To(Succeed())
+
+			By("creating controller")
+			rec := record.NewFakeRecorder(10)
+			s3Fake := newS3APIFake()
+			sut := NewBucketReconciler(k8sClient, k8sClient.Scheme(), s3Fake, "https://s3.test:9001", nil, rec)
+
+			By("reconciling")
+			_, err := sut.Reconcile(ctx, reconcile.Request{NamespacedName: namespacedName(bucket.ObjectMeta)})
+			By("asserting failure err was passed and event was emitted")
+			Expect(err).To(HaveOccurred())
+			Expect(err).Should(MatchError(ContainSubstring("missing")))
+			Eventually(rec.Events).Should(Receive(ContainSubstring("missing")))
 		})
 
 		It("recovers from conflict once configMapName is set", func() {
@@ -500,7 +635,7 @@ var _ = Describe("Bucket Controller", func() {
 			Entry("starts with hyphen", "-invalid", false),
 		)
 
-		DescribeTable("validates existingBucket field combinations",
+		DescribeTable("validates bucket source field combinations",
 			func(spec garagev1alpha1.BucketSpec, isValid bool) {
 				resource := garagev1alpha1.Bucket{
 					ObjectMeta: metav1.ObjectMeta{
@@ -531,7 +666,11 @@ var _ = Describe("Bucket Controller", func() {
 					}},
 				true,
 			),
-			Entry("neither name nor existingBucket",
+			Entry("nameOverride only",
+				garagev1alpha1.BucketSpec{NameOverride: fixture.RandAlpha(8)},
+				true,
+			),
+			Entry("no bucket source",
 				garagev1alpha1.BucketSpec{},
 				false,
 			),
@@ -544,6 +683,34 @@ var _ = Describe("Bucket Controller", func() {
 					},
 				},
 				false),
+			Entry("both name and nameOverride",
+				garagev1alpha1.BucketSpec{
+					Name:         fixture.RandAlpha(8),
+					NameOverride: fixture.RandAlpha(8),
+				},
+				false,
+			),
+			Entry("both nameOverride and existingBucket",
+				garagev1alpha1.BucketSpec{
+					NameOverride: fixture.RandAlpha(8),
+					ExistingBucket: &garagev1alpha1.ExistingBucketSpec{
+						Name:           fixture.RandAlpha(8),
+						OwnerKeySecret: fixture.RandAlpha(6),
+					},
+				},
+				false,
+			),
+			Entry("all bucket sources",
+				garagev1alpha1.BucketSpec{
+					Name:         fixture.RandAlpha(8),
+					NameOverride: fixture.RandAlpha(8),
+					ExistingBucket: &garagev1alpha1.ExistingBucketSpec{
+						Name:           fixture.RandAlpha(8),
+						OwnerKeySecret: fixture.RandAlpha(6),
+					},
+				},
+				false,
+			),
 			Entry("existingBucket without ownerKeySecret",
 				garagev1alpha1.BucketSpec{
 					ExistingBucket: &garagev1alpha1.ExistingBucketSpec{
