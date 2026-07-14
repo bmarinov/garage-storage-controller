@@ -17,3 +17,12 @@ package controller
 const ReasonBucketCreated = "BucketCreated" // type Normal: new bucket in Garage
 
 const ReasonBucketCreateFailed = "BucketCreateFailed" // type Warning: bucket creation in Garage failed
+
+// RBAC denials in the target namespace.
+const (
+	ReasonConfigMapAccessForbidden = "ConfigMapAccessForbidden" // type Warning: no ConfigMap access in the namespace
+	ReasonSecretAccessForbidden    = "SecretAccessForbidden"    // type Warning: no Secret access in the namespace
+)
+
+// rbacRemedyMsg provides additional context for the RBAC failure.
+const rbacRemedyMsg = "Grant the controller namespace-access Role and RoleBinding."

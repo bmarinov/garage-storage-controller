@@ -301,6 +301,45 @@ var _ = Describe("Bucket Controller", func() {
 			Eventually(rec.Events).Should(Receive(ContainSubstring("Warning BucketCreateFailed")))
 		})
 
+		It("should emit ConfigMapAccessForbidden event when RBAC denies ConfigMap access", func() {
+			By("creating a Bucket resource")
+			bucket := newBucket(namespace)
+			Expect(k8sClient.Create(ctx, &bucket)).To(Succeed())
+
+			By("reconciling in a namespace with no access to ConfigMaps")
+			rec := record.NewFakeRecorder(10)
+			s3Fake := newS3APIFake()
+			denied := forbidClientFake{Client: k8sClient, resource: forbidConfigMaps}
+			sut := NewBucketReconciler(denied, k8sClient.Scheme(), s3Fake, "https://s3.test:9000", nil, rec)
+			_, err := sut.Reconcile(ctx, reconcile.Request{NamespacedName: namespacedName(bucket.ObjectMeta)})
+			Expect(err).To(HaveOccurred())
+
+			By("receiving ConfigMapAccessForbidden event")
+			Eventually(rec.Events).Should(Receive(ContainSubstring("Warning ConfigMapAccessForbidden")), "event should match spec")
+		})
+
+		It("should not emit ConfigMapAccessForbidden for different reason", func() {
+			By("creating a Bucket resource")
+			bucket := newBucket(namespace)
+			Expect(k8sClient.Create(ctx, &bucket)).To(Succeed())
+
+			By("reconciling against a client with failing ConfigMap read")
+			rec := record.NewFakeRecorder(10)
+			s3Fake := newS3APIFake()
+			By("failing for unrelated reason")
+			failing := failGetClientFake{
+				Client:   k8sClient,
+				resource: forbidConfigMaps,
+				err:      errors.New("etcd unavailable"),
+			}
+			sut := NewBucketReconciler(failing, k8sClient.Scheme(), s3Fake, "https://s3.test:9000", nil, rec)
+			_, err := sut.Reconcile(ctx, reconcile.Request{NamespacedName: namespacedName(bucket.ObjectMeta)})
+			Expect(err).To(HaveOccurred())
+
+			By("emitting no RBAC warning")
+			Consistently(rec.Events).ShouldNot(Receive(ContainSubstring(ReasonConfigMapAccessForbidden)))
+		})
+
 		It("recovers from conflict once configMapName is set", func() {
 			conflictingName := "foobar"
 			originalData := map[string]string{"foo": "bar"}
@@ -723,11 +762,13 @@ var _ = Describe("Bucket Controller", func() {
 			existingBucketID := fixture.RandAlpha(12)
 
 			By("pre-creating the Garage bucket")
-			sut, s3API, _ := setupBucket()
+			rec := record.NewFakeRecorder(10)
+			s3API := newS3APIFake()
 			s3API.buckets[existingBucketID] = s3.Bucket{
 				ID:            existingBucketID,
 				GlobalAliases: []string{existingBucketName},
 			}
+			sut := NewBucketReconciler(k8sClient, k8sClient.Scheme(), s3API, "https://s3.foo/bar:123", newPermissionClientFake(), rec)
 
 			By("creating a Bucket resource referencing a non-existent Secret")
 			bucket := newExistingBucketResource(namespace, "unknown-secret-"+fixture.RandAlpha(4))
@@ -744,6 +785,43 @@ var _ = Describe("Bucket Controller", func() {
 			By("top-level Ready condition is False")
 			Expect(checkCondition(bucket.Status.Conditions, Ready, metav1.ConditionFalse)).To(Succeed())
 			Expect(meta.FindStatusCondition(bucket.Status.Conditions, Ready).Reason).To(Equal(ReasonOwnerKeySecretNotFound))
+
+			By("emitting no RBAC warning")
+			Consistently(rec.Events).ShouldNot(Receive(ContainSubstring(ReasonSecretAccessForbidden)))
+		})
+
+		It("emits SecretAccessForbidden event when RBAC denies access to the owner key Secret", func() {
+			existingBucketID := fixture.RandAlpha(12)
+
+			By("pre-creating the Garage bucket")
+			s3API := newS3APIFake()
+			s3API.buckets[existingBucketID] = s3.Bucket{
+				ID:            existingBucketID,
+				GlobalAliases: []string{existingBucketName},
+			}
+
+			By("creating a Secret with the key")
+			secret := keySecret(namespace, ownerKeyID)
+			Expect(k8sClient.Create(ctx, &secret)).To(Succeed())
+
+			By("creating the Bucket CR")
+			bucket := newExistingBucketResource(namespace, secret.Name)
+			Expect(k8sClient.Create(ctx, &bucket)).To(Succeed())
+
+			By("reconciling in a namespace with no access to Secrets")
+			rec := record.NewFakeRecorder(10)
+			denied := forbidClientFake{Client: k8sClient, resource: forbidSecrets}
+			sut := NewBucketReconciler(
+				denied, k8sClient.Scheme(), s3API, "https://s3.foo/bar:123", newPermissionClientFake(), rec)
+			shouldReconcile(sut, bucket.ObjectMeta)
+
+			By("receiving SecretAccessForbidden event")
+			Eventually(rec.Events).Should(Receive(ContainSubstring("Warning SecretAccessForbidden")))
+
+			By("BucketReady condition is False with the RBAC reason")
+			Expect(k8sClient.Get(ctx, namespacedName(bucket.ObjectMeta), &bucket)).To(Succeed())
+			Expect(checkCondition(bucket.Status.Conditions, BucketReady, metav1.ConditionFalse)).To(Succeed())
+			Expect(meta.FindStatusCondition(bucket.Status.Conditions, BucketReady).Reason).To(Equal(ReasonSecretAccessForbidden))
 		})
 	})
 })

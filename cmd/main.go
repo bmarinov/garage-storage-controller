@@ -224,6 +224,7 @@ func main() {
 		mgr.GetClient(),
 		mgr.GetScheme(),
 		garageClient.AccessKeyClient,
+		mgr.GetEventRecorderFor("garage-accesskey-controller"),
 	).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "AccessKey")
 		os.Exit(1)
