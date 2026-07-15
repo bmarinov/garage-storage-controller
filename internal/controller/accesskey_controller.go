@@ -184,15 +184,18 @@ func (r *AccessKeyReconciler) reconcileAccessKey(ctx context.Context, key *Acces
 	err = r.ensureSecret(ctx, *key.Object, externalKey.Secret)
 	if err != nil {
 		if errors.Is(err, errNameConflict) {
-			key.markNotReady(KeySecretReady, ReasonSecretNameConflict, "Conflict: %s", err.Error())
+			key.markSecretNotReady(ReasonSecretNameConflict, "Conflict: %s", err.Error())
 			return nil
 		}
 		if apierrors.IsForbidden(err) {
 			r.recorder.Eventf(key.Object, corev1.EventTypeWarning, ReasonSecretAccessForbidden,
 				"Cannot access Secrets in namespace %q: %v. %s",
 				key.Object.Namespace, err, rbacRemedyMsg)
+			key.markSecretNotReady(ReasonSecretAccessForbidden,
+				"Cannot access Secrets in namespace %q: %v", key.Object.Namespace, err)
+			return err
 		}
-		key.markNotReady(KeySecretReady, ReasonSecretSetupFailed, "Failed to set up secret for credentials: %v", err)
+		key.markSecretNotReady(ReasonSecretSetupFailed, "Failed to set up secret for credentials: %v", err)
 		return err
 	}
 
@@ -200,7 +203,7 @@ func (r *AccessKeyReconciler) reconcileAccessKey(ctx context.Context, key *Acces
 		err = r.cleanupOldSecret(ctx, key.Object.Status.SecretName, key.Object.Namespace)
 		if err != nil {
 			logf.FromContext(ctx).Error(err, "cleaning up old secret on spec change", "accessKeyUID", key.Object.UID)
-			key.markNotReady(KeySecretReady, "SecretCleanupFailed",
+			key.markSecretNotReady("SecretCleanupFailed",
 				"New secret created but failed to delete old secret %q: %v",
 				key.Object.Status.SecretName, err)
 

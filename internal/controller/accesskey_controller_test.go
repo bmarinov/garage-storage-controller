@@ -180,6 +180,15 @@ var _ = Describe("AccessKey Controller", func() {
 
 			By("receiving SecretAccessForbidden event")
 			Eventually(rec.Events).Should(Receive(ContainSubstring("Warning SecretAccessForbidden")))
+
+			By("naming RBAC as the cause in the conditions, not a generic setup failure")
+			var accessKey garagev1alpha1.AccessKey
+			Expect(k8sClient.Get(ctx, typeNamespacedName, &accessKey)).To(Succeed())
+			Expect(checkCondition(accessKey.Status.Conditions, KeySecretReady, metav1.ConditionFalse)).To(Succeed())
+			Expect(meta.FindStatusCondition(accessKey.Status.Conditions, KeySecretReady).Reason).
+				To(Equal(ReasonSecretAccessForbidden))
+			Expect(meta.FindStatusCondition(accessKey.Status.Conditions, Ready).Reason).
+				To(Equal(ReasonSecretAccessForbidden))
 		})
 
 		It("should not emit SecretAccessForbidden when no RBAC error", func() {

@@ -64,12 +64,9 @@ func markAccessKeyNotReady(k *garagev1alpha1.AccessKey,
 		args...)
 }
 
-func (k *AccessKey) markNotReady(condType string,
-	reason,
-	message string,
-	args ...any) {
+func (k *AccessKey) markSecretNotReady(reason, message string, args ...any) {
 	cond := metav1.Condition{
-		Type:               condType,
+		Type:               KeySecretReady,
 		Status:             metav1.ConditionFalse,
 		Reason:             reason,
 		Message:            fmt.Sprintf(message, args...),
