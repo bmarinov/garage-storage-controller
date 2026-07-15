@@ -26,6 +26,7 @@ const (
 	BucketReady                       string = "BucketReady"
 	BucketConfigMapReady              string = "BucketConfigMapReady"
 	ReasonConfigMapNameConflict       string = "ConfigMapNameConflict"
+	ReasonConfigMapCreateError        string = "ConfigMapCreateError"
 	ReasonOwnerKeySecretNotFound      string = "OwnerKeySecretNotFound"
 	ReasonOwnershipVerificationFailed string = "OwnershipVerificationFailed"
 )

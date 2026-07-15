@@ -316,6 +316,14 @@ var _ = Describe("Bucket Controller", func() {
 
 			By("receiving ConfigMapAccessForbidden event")
 			Eventually(rec.Events).Should(Receive(ContainSubstring("Warning ConfigMapAccessForbidden")), "event should match spec")
+
+			By("naming RBAC as the cause in the conditions, not a generic create error")
+			Expect(k8sClient.Get(ctx, namespacedName(bucket.ObjectMeta), &bucket)).To(Succeed())
+			Expect(checkCondition(bucket.Status.Conditions, BucketConfigMapReady, metav1.ConditionFalse)).To(Succeed())
+			Expect(meta.FindStatusCondition(bucket.Status.Conditions, BucketConfigMapReady).Reason).
+				To(Equal(ReasonConfigMapAccessForbidden))
+			Expect(meta.FindStatusCondition(bucket.Status.Conditions, Ready).Reason).
+				To(Equal(ReasonConfigMapAccessForbidden))
 		})
 
 		It("should not emit ConfigMapAccessForbidden for different reason", func() {
@@ -338,6 +346,11 @@ var _ = Describe("Bucket Controller", func() {
 
 			By("emitting no RBAC warning")
 			Consistently(rec.Events).ShouldNot(Receive(ContainSubstring(ReasonConfigMapAccessForbidden)))
+
+			By("keeping the generic reason in the conditions")
+			Expect(k8sClient.Get(ctx, namespacedName(bucket.ObjectMeta), &bucket)).To(Succeed())
+			Expect(meta.FindStatusCondition(bucket.Status.Conditions, BucketConfigMapReady).Reason).
+				To(Equal(ReasonConfigMapCreateError))
 		})
 
 		It("recovers from conflict once configMapName is set", func() {

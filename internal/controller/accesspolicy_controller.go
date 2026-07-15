@@ -165,12 +165,14 @@ func (r *AccessPolicyReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	}
 
 	if !equality.Semantic.DeepEqual(*oldStatus, policy.Status) {
-		err = r.client.Status().Patch(ctx, &policy, client.Merge, client.FieldOwner(bucketControllerName))
-		if err != nil {
-			if apierrors.IsConflict(err) {
+		patchErr := r.client.Status().Patch(ctx, &policy, client.Merge, client.FieldOwner(bucketControllerName))
+		if patchErr != nil {
+			if apierrors.IsConflict(patchErr) {
 				return ctrl.Result{}, nil
 			}
-			return ctrl.Result{}, err
+			if resultErr == nil {
+				return ctrl.Result{}, patchErr
+			}
 		}
 	}
 

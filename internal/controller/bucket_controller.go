@@ -198,9 +198,15 @@ func (r *BucketReconciler) reconcileBucket(ctx context.Context, bucket *garagev1
 			r.recorder.Eventf(bucket, corev1.EventTypeWarning, ReasonConfigMapAccessForbidden,
 				"Cannot access ConfigMaps in namespace %q: %v. %s",
 				bucket.Namespace, err, rbacRemedyMsg)
+			updateBucketCMCondition(bucket, metav1.ConditionFalse,
+				ReasonConfigMapAccessForbidden,
+				"Cannot access ConfigMaps in namespace %q: %v",
+				bucket.Namespace, err,
+			)
+			return ctrl.Result{}, err
 		}
 		updateBucketCMCondition(bucket, metav1.ConditionFalse,
-			"ConfigMapCreateError",
+			ReasonConfigMapCreateError,
 			"Unable to create ConfigMap: %v",
 			err,
 		)
