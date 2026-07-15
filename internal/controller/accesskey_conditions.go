@@ -31,6 +31,7 @@ const (
 	AccessKeyReady           string = "AccessKeyReady"
 	KeySecretReady           string = "KeySecretReady"
 	ReasonSecretNameConflict string = "SecretNameConflict"
+	ReasonSecretSetupFailed  string = "SecretSetupFailed"
 )
 
 func (k *AccessKey) InitializeConditions() {

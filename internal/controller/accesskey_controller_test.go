@@ -144,6 +144,29 @@ var _ = Describe("AccessKey Controller", func() {
 			}).Should(Succeed())
 		})
 
+		It("persists the failure reason in status when the Secret cannot be read", func() {
+			By("reconciling against a client with denied Secret read")
+			failing := failGetClientFake{Client: k8sClient, resource: forbidSecrets, err: errors.New("etcd unavailable")}
+			sut := NewAccessKeyReconciler(failing, k8sClient.Scheme(), newAccessMgrFake(), record.NewFakeRecorder(10))
+
+			_, err := sut.Reconcile(ctx, reconcile.Request{
+				NamespacedName: typeNamespacedName,
+			})
+			Expect(err).To(HaveOccurred())
+
+			By("conditions updated in the failed reconcile")
+			var accessKey garagev1alpha1.AccessKey
+			Expect(k8sClient.Get(ctx, typeNamespacedName, &accessKey)).To(Succeed())
+			Expect(checkCondition(accessKey.Status.Conditions, KeySecretReady, metav1.ConditionFalse)).To(Succeed())
+			Expect(meta.FindStatusCondition(accessKey.Status.Conditions, KeySecretReady).Reason).
+				To(Equal(ReasonSecretSetupFailed))
+
+			By("cause is in the top-level condition")
+			Expect(checkCondition(accessKey.Status.Conditions, Ready, metav1.ConditionFalse)).To(Succeed())
+			Expect(meta.FindStatusCondition(accessKey.Status.Conditions, Ready).Reason).
+				To(Equal(ReasonSecretSetupFailed))
+		})
+
 		It("should emit SecretAccessForbidden event when RBAC denies Secret access", func() {
 			By("reconciling in a namespace where the controller has no access")
 			rec := record.NewFakeRecorder(10)

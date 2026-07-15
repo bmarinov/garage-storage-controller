@@ -131,27 +131,33 @@ func (r *AccessKeyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	key.InitializeConditions()
 
 	err = r.reconcileAccessKey(ctx, &key)
-	if err != nil {
-		return ctrl.Result{}, err
-	}
-
 	updateAccessKeyCondition(&accessKey)
 
 	if !equality.Semantic.DeepEqual(*orig, accessKey.Status) {
-		var a garagev1alpha1.AccessKey
-		err = r.client.Get(ctx, req.NamespacedName, &a)
-		if err != nil {
-			return ctrl.Result{}, err
+		statusErr := r.updateStatus(ctx, req.NamespacedName, accessKey.Status)
+		if statusErr != nil {
+			if apierrors.IsConflict(statusErr) {
+				return ctrl.Result{}, nil
+			}
+			if err == nil {
+				return ctrl.Result{}, statusErr
+			}
 		}
-		a.Status = accessKey.Status
-		err = r.client.Status().Update(ctx, &a)
-		if apierrors.IsConflict(err) {
-			return ctrl.Result{}, nil
-		}
-		return ctrl.Result{}, err
 	}
 
-	return ctrl.Result{}, nil
+	return ctrl.Result{}, err
+}
+
+func (r *AccessKeyReconciler) updateStatus(
+	ctx context.Context, name types.NamespacedName, status garagev1alpha1.AccessKeyStatus,
+) error {
+	var latest garagev1alpha1.AccessKey
+	if err := r.client.Get(ctx, name, &latest); err != nil {
+		return fmt.Errorf("re-reading access key for status update: %w", err)
+	}
+	latest.Status = status
+
+	return r.client.Status().Update(ctx, &latest)
 }
 
 func (r *AccessKeyReconciler) reconcileAccessKey(ctx context.Context, key *AccessKey) error {
@@ -186,7 +192,7 @@ func (r *AccessKeyReconciler) reconcileAccessKey(ctx context.Context, key *Acces
 				"Cannot access Secrets in namespace %q: %v. %s",
 				key.Object.Namespace, err, rbacRemedyMsg)
 		}
-		key.markNotReady(KeySecretReady, "SecretSetupFailed", "Failed to set up secret for credentials: %v", err)
+		key.markNotReady(KeySecretReady, ReasonSecretSetupFailed, "Failed to set up secret for credentials: %v", err)
 		return err
 	}
 
