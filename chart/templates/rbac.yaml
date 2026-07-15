@@ -27,6 +27,9 @@ kind: ClusterRole
 metadata:
   name: {{ include "garage-controller.clusterRoleName" . }}
 rules:
+  - apiGroups: [""]
+    resources: [events]
+    verbs: [create,patch]
   - apiGroups: [garage.getclustered.net]
     resources: [accesskeys, accesspolicies, buckets]
     verbs: [create, delete, get, list, patch, update, watch]
