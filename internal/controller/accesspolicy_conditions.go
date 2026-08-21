@@ -43,6 +43,8 @@ const (
 	ReasonDependenciesNotReady string = "DependenciesNotReady"
 	// Transient errors
 	ReasonDegraded string = "DependencyDegraded"
+	// Applying permissions to Garage failed
+	ReasonPermissionAssignmentFailed string = "PermissionAssignmentFailed"
 )
 
 func initializePolicyConditions(p *garagev1alpha1.AccessPolicy) {
