@@ -16,6 +16,7 @@ package controller
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -275,6 +276,79 @@ var _ = Describe("AccessPolicy Controller", func() {
 			By("storing dependency names in policy labels")
 			Expect(reconciled.Labels[accesskeyLabel]).To(Equal(reconciled.Spec.AccessKey))
 			Expect(reconciled.Labels[bucketLabel]).To(Equal(reconciled.Spec.Bucket))
+		})
+
+		It("sets correct reason when applying permissions for key fails", func() {
+			By("creating dependencies")
+			bucketName := fixture.RandAlpha(8)
+			accessKeyName := fixture.RandAlpha(8)
+
+			bucketRes := garagev1alpha1.Bucket{
+				ObjectMeta: metav1.ObjectMeta{Name: bucketName, Namespace: namespace},
+				Spec:       garagev1alpha1.BucketSpec{Name: fixture.RandAlpha(8)},
+			}
+			Expect(k8sClient.Create(ctx, &bucketRes)).To(Succeed())
+			bucketController, _, _ := setupBucket()
+			Expect(bucketController.Reconcile(ctx, reconcile.Request{NamespacedName: namespacedName(bucketRes.ObjectMeta)})).
+				Error().ToNot(HaveOccurred())
+
+			keyRes := garagev1alpha1.AccessKey{
+				ObjectMeta: metav1.ObjectMeta{Name: accessKeyName, Namespace: namespace},
+				Spec:       garagev1alpha1.AccessKeySpec{SecretName: fixture.RandAlpha(12)},
+			}
+			Expect(k8sClient.Create(ctx, &keyRes)).To(Succeed())
+			keyCtrl, _ := setup()
+			Expect(keyCtrl.Reconcile(ctx, reconcile.Request{NamespacedName: namespacedName(keyRes.ObjectMeta)})).Error().ToNot(HaveOccurred())
+			Expect(k8sClient.Get(ctx, namespacedName(keyRes.ObjectMeta), &keyRes)).To(Succeed())
+			DeferCleanup(func() {
+				keyRes.Finalizers = nil
+				_ = k8sClient.Update(ctx, &keyRes)
+			})
+
+			By("creating a related policy")
+			policy := garagev1alpha1.AccessPolicy{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      fixture.RandAlpha(6),
+					Namespace: namespace,
+				},
+				Spec: garagev1alpha1.AccessPolicySpec{
+					AccessKey: accessKeyName,
+					Bucket:    bucketName,
+					Permissions: garagev1alpha1.Permissions{
+						Read: true,
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, &policy)).To(Succeed())
+
+			sut := NewAccessPolicyReconciler(k8sClient, k8sClient.Scheme(),
+				failSetPermissionsFake{
+					permissionClientFake: newPermissionClientFake(),
+					err:                  errors.New("garage unavailable"),
+				})
+			objID := types.NamespacedName{
+				Namespace: policy.Namespace,
+				Name:      policy.Name,
+			}
+
+			By("reconciling exposes underlying failure")
+			Eventually(func(g Gomega) {
+				_, _ = sut.Reconcile(ctx, reconcile.Request{NamespacedName: objID})
+
+				var reconciled garagev1alpha1.AccessPolicy
+				_ = k8sClient.Get(ctx, objID, &reconciled)
+
+				policyCond := meta.FindStatusCondition(reconciled.Status.Conditions, PolicyAssignmentReady)
+				g.Expect(policyCond).ToNot(BeNil())
+				g.Expect(policyCond.Status).To(Equal(metav1.ConditionFalse))
+				g.Expect(policyCond.Reason).To(Equal(ReasonPermissionAssignmentFailed))
+
+				readyCond := meta.FindStatusCondition(reconciled.Status.Conditions, Ready)
+				g.Expect(readyCond).ToNot(BeNil())
+				g.Expect(readyCond.Status).To(Equal(metav1.ConditionFalse))
+				g.Expect(readyCond.Reason).To(Equal(ReasonPermissionAssignmentFailed),
+					"Ready should not report wrong state")
+			}).Should(Succeed())
 		})
 
 		It("should remove access grant on deletion", func() {

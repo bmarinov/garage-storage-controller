@@ -281,7 +281,11 @@ func (r *AccessPolicyReconciler) reconcilePolicy(ctx context.Context, policy *ga
 			Owner: policy.Spec.Permissions.Owner,
 		})
 	if err != nil {
-		return err
+		markPolicyConditionNotReady(policy,
+			PolicyAssignmentReady,
+			ReasonPermissionAssignmentFailed,
+			"Failed to apply access policy to Garage: %v", err)
+		return fmt.Errorf("applying permissions to Garage: %w", err)
 	}
 	markPolicyAssignmentReady(policy)
 

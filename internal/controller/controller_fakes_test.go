@@ -54,6 +54,18 @@ func (p *permissionClientFake) GetPermissions(_ context.Context, keyID, bucketID
 var _ PermissionClient = &permissionClientFake{}
 var _ OwnershipVerifier = &permissionClientFake{}
 
+// failSetPermissionsFake fails permission assignment with a configured error.
+type failSetPermissionsFake struct {
+	*permissionClientFake
+	err error
+}
+
+func (f failSetPermissionsFake) SetPermissions(context.Context, string, string, s3.Permissions) error {
+	return f.err
+}
+
+var _ PermissionClient = failSetPermissionsFake{}
+
 var errRBACDenied = errors.New("RBAC: access denied in fake")
 
 type forbiddenResource string
