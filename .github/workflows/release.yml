@@ -13,6 +13,7 @@ jobs:
     env:
       REGISTRY: ghcr.io
       IMAGE_NAME: ${{ github.repository }}
+      DEV_IMAGE_NAME: ${{ github.repository }}-dev
       DOCKERHUB_IMAGE: docker.io/getclustered/garage-storage-controller
       DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
 
@@ -59,13 +60,21 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
 
-      - name: Build and push image
+      - name: Promote CI image
+        id: promote
+        env:
+          CI_IMAGE: ${{ env.REGISTRY }}/${{ env.DEV_IMAGE_NAME }}
+          RELEASE_IMAGE: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          VERSION: ${{ steps.version.outputs.VERSION }}
+          COMMIT_SHA: ${{ github.sha }}
         run: |
-          make docker-buildx PUSH=true \
-            IMG=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.version.outputs.VERSION }} \
-            LABEL_ARGS="--label org.opencontainers.image.version=${{ steps.version.outputs.VERSION }} \
-                        --label org.opencontainers.image.revision=${{ github.sha }} \
-                        --label org.opencontainers.image.created=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          if ! digest=$(docker buildx imagetools inspect "${CI_IMAGE}:sha-${COMMIT_SHA}" --format '{{json .Manifest}}' | jq -re .digest); then
+            echo "::error::No CI image at ${CI_IMAGE}:sha-${COMMIT_SHA}. Tag a commit with a green build run on main."
+            exit 1
+          fi
+          docker buildx imagetools create -t "${RELEASE_IMAGE}:${VERSION}" "${CI_IMAGE}@${digest}"
+          echo "Promoted ${CI_IMAGE}@${digest} -> ${RELEASE_IMAGE}:${VERSION}"
+          echo "DIGEST=${digest}" >> "$GITHUB_OUTPUT"
 
       - name: Tag latest
         if: github.ref_type == 'tag'
@@ -109,8 +118,10 @@ jobs:
             crds-${{ steps.version.outputs.VERSION }}.yaml
           body: |
 
-            Controller image: `${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.version.outputs.VERSION }}`
-            (mirror at `${{ env.DOCKERHUB_IMAGE }}`)
+            Controller image:
+            - `${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.version.outputs.VERSION }}`
+            - `${{ env.DOCKERHUB_IMAGE }}:${{ steps.version.outputs.VERSION }}` (mirror)
+            - `${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.version.outputs.VERSION }}@${{ steps.promote.outputs.DIGEST }}` (digest-pinned)
 
             ## Changes
 
