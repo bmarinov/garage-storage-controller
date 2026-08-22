@@ -18,6 +18,8 @@ const ReasonBucketCreated = "BucketCreated" // type Normal: new bucket in Garage
 
 const ReasonBucketCreateFailed = "BucketCreateFailed" // type Warning: bucket creation in Garage failed
 
+const ReasonPolicyAssignmentFailed = "PolicyAssignmentFailed" // type Warning: applying access policy to Garage failed
+
 // RBAC denials in the target namespace.
 const (
 	ReasonConfigMapAccessForbidden = "ConfigMapAccessForbidden" // type Warning: no ConfigMap access in the namespace

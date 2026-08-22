@@ -26,6 +26,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/tools/record"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
@@ -104,7 +105,7 @@ var _ = Describe("AccessPolicy Controller", func() {
 			Expect(k8sClient.Create(ctx, &p)).To(Succeed())
 			objID := types.NamespacedName{Namespace: namespace, Name: p.Name}
 
-			sut := NewAccessPolicyReconciler(k8sClient, k8sClient.Scheme(), newPermissionClientFake())
+			sut := NewAccessPolicyReconciler(k8sClient, k8sClient.Scheme(), newPermissionClientFake(), record.NewFakeRecorder(10))
 
 			Eventually(func(g Gomega) {
 				_, err := sut.Reconcile(ctx,
@@ -183,7 +184,12 @@ var _ = Describe("AccessPolicy Controller", func() {
 
 			By("reconciling reaches ready status")
 			Eventually(func(g Gomega) {
-				sut := NewAccessPolicyReconciler(k8sClient, k8sClient.Scheme(), newPermissionClientFake())
+				sut := NewAccessPolicyReconciler(
+					k8sClient,
+					k8sClient.Scheme(),
+					newPermissionClientFake(),
+					record.NewFakeRecorder(10),
+				)
 				_, err := sut.Reconcile(ctx,
 					reconcile.Request{NamespacedName: objID})
 				g.Expect(err).ToNot(HaveOccurred())
@@ -203,30 +209,7 @@ var _ = Describe("AccessPolicy Controller", func() {
 
 		It("should reconcile with dependencies ready", func() {
 			By("creating dependencies")
-			bucketName := fixture.RandAlpha(8)
-			accessKeyName := fixture.RandAlpha(8)
-
-			bucketRes := garagev1alpha1.Bucket{
-				ObjectMeta: metav1.ObjectMeta{Name: bucketName, Namespace: namespace},
-				Spec:       garagev1alpha1.BucketSpec{Name: fixture.RandAlpha(8)},
-			}
-			Expect(k8sClient.Create(ctx, &bucketRes)).To(Succeed())
-			bucketController, _, _ := setupBucket()
-			Expect(bucketController.Reconcile(ctx, reconcile.Request{NamespacedName: namespacedName(bucketRes.ObjectMeta)})).
-				Error().ToNot(HaveOccurred())
-
-			keyRes := garagev1alpha1.AccessKey{
-				ObjectMeta: metav1.ObjectMeta{Name: accessKeyName, Namespace: namespace},
-				Spec:       garagev1alpha1.AccessKeySpec{SecretName: fixture.RandAlpha(12)},
-			}
-			Expect(k8sClient.Create(ctx, &keyRes)).To(Succeed())
-			keyCtrl, _ := setup()
-			Expect(keyCtrl.Reconcile(ctx, reconcile.Request{NamespacedName: namespacedName(keyRes.ObjectMeta)})).Error().ToNot(HaveOccurred())
-			Expect(k8sClient.Get(ctx, namespacedName(keyRes.ObjectMeta), &keyRes)).To(Succeed())
-			DeferCleanup(func() {
-				keyRes.Finalizers = nil
-				_ = k8sClient.Update(ctx, &keyRes)
-			})
+			bucketName, accessKeyName := createReadyDependencies(ctx, namespace)
 
 			By("creating a referencing policy")
 			policy := garagev1alpha1.AccessPolicy{
@@ -244,7 +227,7 @@ var _ = Describe("AccessPolicy Controller", func() {
 			}
 			Expect(k8sClient.Create(ctx, &policy)).To(Succeed())
 
-			sut := NewAccessPolicyReconciler(k8sClient, k8sClient.Scheme(), newPermissionClientFake())
+			sut := NewAccessPolicyReconciler(k8sClient, k8sClient.Scheme(), newPermissionClientFake(), record.NewFakeRecorder(10))
 			objID := types.NamespacedName{
 				Namespace: policy.Namespace,
 				Name:      policy.Name,
@@ -280,30 +263,7 @@ var _ = Describe("AccessPolicy Controller", func() {
 
 		It("sets correct reason when applying permissions for key fails", func() {
 			By("creating dependencies")
-			bucketName := fixture.RandAlpha(8)
-			accessKeyName := fixture.RandAlpha(8)
-
-			bucketRes := garagev1alpha1.Bucket{
-				ObjectMeta: metav1.ObjectMeta{Name: bucketName, Namespace: namespace},
-				Spec:       garagev1alpha1.BucketSpec{Name: fixture.RandAlpha(8)},
-			}
-			Expect(k8sClient.Create(ctx, &bucketRes)).To(Succeed())
-			bucketController, _, _ := setupBucket()
-			Expect(bucketController.Reconcile(ctx, reconcile.Request{NamespacedName: namespacedName(bucketRes.ObjectMeta)})).
-				Error().ToNot(HaveOccurred())
-
-			keyRes := garagev1alpha1.AccessKey{
-				ObjectMeta: metav1.ObjectMeta{Name: accessKeyName, Namespace: namespace},
-				Spec:       garagev1alpha1.AccessKeySpec{SecretName: fixture.RandAlpha(12)},
-			}
-			Expect(k8sClient.Create(ctx, &keyRes)).To(Succeed())
-			keyCtrl, _ := setup()
-			Expect(keyCtrl.Reconcile(ctx, reconcile.Request{NamespacedName: namespacedName(keyRes.ObjectMeta)})).Error().ToNot(HaveOccurred())
-			Expect(k8sClient.Get(ctx, namespacedName(keyRes.ObjectMeta), &keyRes)).To(Succeed())
-			DeferCleanup(func() {
-				keyRes.Finalizers = nil
-				_ = k8sClient.Update(ctx, &keyRes)
-			})
+			bucketName, accessKeyName := createReadyDependencies(ctx, namespace)
 
 			By("creating a related policy")
 			policy := garagev1alpha1.AccessPolicy{
@@ -325,7 +285,8 @@ var _ = Describe("AccessPolicy Controller", func() {
 				failSetPermissionsFake{
 					permissionClientFake: newPermissionClientFake(),
 					err:                  errors.New("garage unavailable"),
-				})
+				},
+				record.NewFakeRecorder(10))
 			objID := types.NamespacedName{
 				Namespace: policy.Namespace,
 				Name:      policy.Name,
@@ -341,14 +302,135 @@ var _ = Describe("AccessPolicy Controller", func() {
 				policyCond := meta.FindStatusCondition(reconciled.Status.Conditions, PolicyAssignmentReady)
 				g.Expect(policyCond).ToNot(BeNil())
 				g.Expect(policyCond.Status).To(Equal(metav1.ConditionFalse))
-				g.Expect(policyCond.Reason).To(Equal(ReasonPermissionAssignmentFailed))
+				g.Expect(policyCond.Reason).To(Equal(ReasonPolicyAssignmentFailed))
 
 				readyCond := meta.FindStatusCondition(reconciled.Status.Conditions, Ready)
 				g.Expect(readyCond).ToNot(BeNil())
 				g.Expect(readyCond.Status).To(Equal(metav1.ConditionFalse))
-				g.Expect(readyCond.Reason).To(Equal(ReasonPermissionAssignmentFailed),
+				g.Expect(readyCond.Reason).To(Equal(ReasonPolicyAssignmentFailed),
 					"Ready should not report wrong state")
 			}).Should(Succeed())
+		})
+
+		It("emits PolicyAssignmentFailed event when applying permissions fails", func() {
+			By("creating dependencies")
+			bucketName, accessKeyName := createReadyDependencies(ctx, namespace)
+
+			By("creating a related policy")
+			policy := garagev1alpha1.AccessPolicy{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      fixture.RandAlpha(6),
+					Namespace: namespace,
+				},
+				Spec: garagev1alpha1.AccessPolicySpec{
+					AccessKey: accessKeyName,
+					Bucket:    bucketName,
+					Permissions: garagev1alpha1.Permissions{
+						Read: true,
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, &policy)).To(Succeed())
+
+			rec := record.NewFakeRecorder(10)
+			sut := NewAccessPolicyReconciler(k8sClient,
+				k8sClient.Scheme(),
+				failSetPermissionsFake{
+					permissionClientFake: newPermissionClientFake(),
+					err:                  errors.New("garage unavailable"),
+				},
+				rec,
+			)
+			objID := types.NamespacedName{
+				Namespace: policy.Namespace,
+				Name:      policy.Name,
+			}
+
+			By("reconciling to the failing assignment")
+			// first reconcile only adds labels and finalizer
+			_, _ = sut.Reconcile(ctx, reconcile.Request{NamespacedName: objID})
+			_, _ = sut.Reconcile(ctx, reconcile.Request{NamespacedName: objID})
+
+			By("receiving PolicyAssignmentFailed event")
+			Eventually(rec.Events).Should(Receive(ContainSubstring("Warning PolicyAssignmentFailed")))
+		})
+
+		It("emits no events when permissions apply successfully", func() {
+			By("creating dependencies")
+			bucketName, accessKeyName := createReadyDependencies(ctx, namespace)
+
+			By("creating a related policy")
+			policy := garagev1alpha1.AccessPolicy{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      fixture.RandAlpha(6),
+					Namespace: namespace,
+				},
+				Spec: garagev1alpha1.AccessPolicySpec{
+					AccessKey: accessKeyName,
+					Bucket:    bucketName,
+					Permissions: garagev1alpha1.Permissions{
+						Read: true,
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, &policy)).To(Succeed())
+
+			rec := record.NewFakeRecorder(10)
+			sut := NewAccessPolicyReconciler(k8sClient, k8sClient.Scheme(), newPermissionClientFake(), rec)
+			objID := types.NamespacedName{
+				Namespace: policy.Namespace,
+				Name:      policy.Name,
+			}
+
+			By("reconciling to Ready")
+			Eventually(func(g Gomega) {
+				_, err := sut.Reconcile(ctx, reconcile.Request{NamespacedName: objID})
+				g.Expect(err).ToNot(HaveOccurred())
+
+				var reconciled garagev1alpha1.AccessPolicy
+				_ = k8sClient.Get(ctx, objID, &reconciled)
+				g.Expect(checkCondition(reconciled.Status.Conditions, Ready, metav1.ConditionTrue)).To(Succeed())
+			}).Should(Succeed())
+
+			By("emitting nothing")
+			Consistently(rec.Events).ShouldNot(Receive())
+		})
+
+		It("emits no assignment warning when dependencies are missing", func() {
+			By("creating policy with non-existent bucket and key")
+			policy := garagev1alpha1.AccessPolicy{
+				ObjectMeta: metav1.ObjectMeta{Name: fixture.RandAlpha(6), Namespace: namespace},
+				Spec: garagev1alpha1.AccessPolicySpec{
+					AccessKey:   "key-does-not-exist",
+					Bucket:      "bucket-does-not-exist",
+					Permissions: garagev1alpha1.Permissions{Read: true},
+				},
+			}
+			Expect(k8sClient.Create(ctx, &policy)).To(Succeed())
+
+			rec := record.NewFakeRecorder(10)
+			sut := NewAccessPolicyReconciler(k8sClient, k8sClient.Scheme(),
+				failSetPermissionsFake{
+					permissionClientFake: newPermissionClientFake(),
+					err:                  errors.New("garage unavailable"),
+				},
+				rec)
+			objID := types.NamespacedName{Namespace: policy.Namespace, Name: policy.Name}
+
+			By("reconciling reaches NotReady with reason BucketMissing")
+			Eventually(func(g Gomega) {
+				_, err := sut.Reconcile(ctx, reconcile.Request{NamespacedName: objID})
+				g.Expect(err).ToNot(HaveOccurred())
+
+				var reconciled garagev1alpha1.AccessPolicy
+				_ = k8sClient.Get(ctx, objID, &reconciled)
+				readyCond := meta.FindStatusCondition(reconciled.Status.Conditions, Ready)
+				g.Expect(readyCond).ToNot(BeNil())
+				g.Expect(readyCond.Reason).To(Equal(ReasonBucketMissing))
+			}).Should(Succeed())
+
+			By("emitting no assignment warning")
+			Consistently(rec.Events).ShouldNot(Receive(ContainSubstring(ReasonPolicyAssignmentFailed)))
 		})
 
 		It("should remove access grant on deletion", func() {
@@ -698,7 +780,46 @@ var _ = Describe("AccessPolicy Controller", func() {
 	})
 })
 
+// createReadyDependencies creates a Bucket and an AccessKey and reconciles through the controllers.
+func createReadyDependencies(ctx context.Context, namespace string) (bucketName, accessKeyName string) {
+	GinkgoHelper()
+
+	bucketName = fixture.RandAlpha(8)
+	accessKeyName = fixture.RandAlpha(8)
+
+	bucketRes := garagev1alpha1.Bucket{
+		ObjectMeta: metav1.ObjectMeta{Name: bucketName, Namespace: namespace},
+		Spec:       garagev1alpha1.BucketSpec{Name: fixture.RandAlpha(8)},
+	}
+	Expect(k8sClient.Create(ctx, &bucketRes)).To(Succeed())
+	bucketController, _, _ := setupBucket()
+	Expect(bucketController.Reconcile(ctx, reconcile.Request{NamespacedName: namespacedName(bucketRes.ObjectMeta)})).
+		Error().ToNot(HaveOccurred())
+
+	keyRes := garagev1alpha1.AccessKey{
+		ObjectMeta: metav1.ObjectMeta{Name: accessKeyName, Namespace: namespace},
+		Spec:       garagev1alpha1.AccessKeySpec{SecretName: fixture.RandAlpha(12)},
+	}
+	Expect(k8sClient.Create(ctx, &keyRes)).To(Succeed())
+	keyCtrl, _ := setup()
+	Expect(keyCtrl.Reconcile(ctx, reconcile.Request{NamespacedName: namespacedName(keyRes.ObjectMeta)})).Error().ToNot(HaveOccurred())
+	Expect(k8sClient.Get(ctx, namespacedName(keyRes.ObjectMeta), &keyRes)).To(Succeed())
+
+	// fix namespace teardown:
+	DeferCleanup(func() {
+		keyRes.Finalizers = nil
+		_ = k8sClient.Update(ctx, &keyRes)
+	})
+
+	return bucketName, accessKeyName
+}
+
 func setupPolicyTest() (*AccessPolicyReconciler, *permissionClientFake) {
 	apiClient := newPermissionClientFake()
-	return NewAccessPolicyReconciler(k8sClient, k8sClient.Scheme(), apiClient), apiClient
+	return NewAccessPolicyReconciler(
+		k8sClient,
+		k8sClient.Scheme(),
+		apiClient,
+		record.NewFakeRecorder(10),
+	), apiClient
 }
