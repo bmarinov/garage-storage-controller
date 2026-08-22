@@ -233,6 +233,7 @@ func main() {
 		mgr.GetClient(),
 		mgr.GetScheme(),
 		garageClient.PermissionClient,
+		mgr.GetEventRecorderFor("garage-accesspolicy-controller"),
 	).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "AccessPolicy")
 		os.Exit(1)
