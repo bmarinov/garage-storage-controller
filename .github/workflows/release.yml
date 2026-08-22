@@ -13,6 +13,8 @@ jobs:
     env:
       REGISTRY: ghcr.io
       IMAGE_NAME: ${{ github.repository }}
+      DOCKERHUB_IMAGE: docker.io/getclustered/garage-storage-controller
+      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
 
     permissions:
       contents: write
@@ -72,6 +74,24 @@ jobs:
             -t ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest \
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.version.outputs.VERSION }}
 
+      - name: Log in to Docker Hub
+        if: env.DOCKERHUB_USERNAME != ''
+        run: echo "${{ secrets.DOCKERHUB_TOKEN }}" | docker login docker.io -u "${{ env.DOCKERHUB_USERNAME }}" --password-stdin
+
+      - name: Push image to Docker Hub mirror
+        if: env.DOCKERHUB_USERNAME != ''
+        run: |
+          docker buildx imagetools create \
+            -t ${{ env.DOCKERHUB_IMAGE }}:${{ steps.version.outputs.VERSION }} \
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.version.outputs.VERSION }}
+
+      - name: Push latest to Docker Hub
+        if: github.ref_type == 'tag' && env.DOCKERHUB_USERNAME != ''
+        run: |
+          docker buildx imagetools create \
+            -t ${{ env.DOCKERHUB_IMAGE }}:latest \
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.version.outputs.VERSION }}
+
       - name: Package CRDs
         if: github.ref_type == 'tag'
         run: kubectl kustomize ./config/install/crds -o crds-${{ steps.version.outputs.VERSION }}.yaml
@@ -87,6 +107,7 @@ jobs:
           body: |
 
             Controller image: `${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.version.outputs.VERSION }}`
+            (mirror at `${{ env.DOCKERHUB_IMAGE }}`)
 
             ## Changes
 
