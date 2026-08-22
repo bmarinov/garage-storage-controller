@@ -20,12 +20,14 @@ import (
 	"fmt"
 	"time"
 
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/equality"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -47,16 +49,19 @@ type AccessPolicyReconciler struct {
 	client      client.Client
 	scheme      *runtime.Scheme
 	adminClient PermissionClient
+	recorder    record.EventRecorder
 }
 
 func NewAccessPolicyReconciler(c client.Client,
 	scheme *runtime.Scheme,
 	ac PermissionClient,
+	recorder record.EventRecorder,
 ) *AccessPolicyReconciler {
 	return &AccessPolicyReconciler{
 		client:      c,
 		scheme:      scheme,
 		adminClient: ac,
+		recorder:    recorder,
 	}
 }
 
@@ -84,6 +89,7 @@ const bucketLabel = "garage.getclustered.net/bucket-name"
 // +kubebuilder:rbac:groups=garage.getclustered.net,resources=accesspolicies,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=garage.getclustered.net,resources=accesspolicies/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=garage.getclustered.net,resources=accesspolicies/finalizers,verbs=update
+// +kubebuilder:rbac:groups="",resources=events,verbs=create;patch
 
 func (r *AccessPolicyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
@@ -281,11 +287,13 @@ func (r *AccessPolicyReconciler) reconcilePolicy(ctx context.Context, policy *ga
 			Owner: policy.Spec.Permissions.Owner,
 		})
 	if err != nil {
+		r.recorder.Eventf(policy, corev1.EventTypeWarning, ReasonPolicyAssignmentFailed,
+			"Failed to apply access policy to Garage: %v", err)
 		markPolicyConditionNotReady(policy,
 			PolicyAssignmentReady,
-			ReasonPermissionAssignmentFailed,
+			ReasonPolicyAssignmentFailed,
 			"Failed to apply access policy to Garage: %v", err)
-		return fmt.Errorf("applying permissions to Garage: %w", err)
+		return fmt.Errorf("applying access policy: %w", err)
 	}
 	markPolicyAssignmentReady(policy)
 

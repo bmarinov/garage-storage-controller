@@ -65,7 +65,8 @@ var _ = Describe("AccessPolicy controller manager", Ordered, func() {
 			SetupWithManager(mgr)).To(Succeed())
 		Expect(NewAccessKeyReconciler(mgr.GetClient(), mgr.GetScheme(), newAccessMgrFake(), mgr.GetEventRecorderFor("garage-accesskey-controller")).
 			SetupWithManager(mgr)).To(Succeed())
-		Expect(NewAccessPolicyReconciler(mgr.GetClient(), mgr.GetScheme(), apiClient).
+		Expect(NewAccessPolicyReconciler(mgr.GetClient(), mgr.GetScheme(), apiClient,
+			mgr.GetEventRecorderFor("garage-accesspolicy-controller")).
 			SetupWithManager(mgr)).To(Succeed())
 
 		go func() {
