@@ -18,9 +18,31 @@ spec:
     - jsonPath: .status.conditions[?(@.type=="Ready")].status
       name: Ready
       type: string
+    - jsonPath: .spec.bucket
+      name: Bucket
+      type: string
+    - jsonPath: .spec.accessKey
+      name: AccessKey
+      type: string
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
     - jsonPath: .status.conditions[?(@.type=="Ready")].reason
       name: Reason
+      priority: 1
       type: string
+    - jsonPath: .spec.permissions.read
+      name: Read
+      priority: 1
+      type: boolean
+    - jsonPath: .spec.permissions.write
+      name: Write
+      priority: 1
+      type: boolean
+    - jsonPath: .spec.permissions.owner
+      name: Owner
+      priority: 1
+      type: boolean
     name: v1alpha1
     schema:
       openAPIV3Schema:

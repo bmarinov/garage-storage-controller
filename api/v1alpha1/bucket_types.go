@@ -107,7 +107,12 @@ type BucketStatus struct {
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
 // +kubebuilder:printcolumn:name="Ready",type="string",JSONPath=".status.conditions[?(@.type==\"Ready\")].status"
-// +kubebuilder:printcolumn:name="Reason",type="string",JSONPath=".status.conditions[?(@.type==\"Ready\")].reason"
+// +kubebuilder:printcolumn:name="Alias",type="string",JSONPath=".status.bucketName",description="Bucket alias as it exists in Garage"
+// +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp"
+// +kubebuilder:printcolumn:name="Reason",type="string",JSONPath=".status.conditions[?(@.type==\"Ready\")].reason",priority=1
+// +kubebuilder:printcolumn:name="ID",type="string",JSONPath=".status.bucketId",description="Garage internal bucket identifier",priority=1
+// +kubebuilder:printcolumn:name="Max-Size",type="string",JSONPath=".spec.maxSize",priority=1
+// +kubebuilder:printcolumn:name="Max-Objects",type="integer",JSONPath=".spec.maxObjects",priority=1
 
 // Bucket is the Schema for the buckets API
 type Bucket struct {

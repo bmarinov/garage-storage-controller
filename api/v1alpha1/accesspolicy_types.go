@@ -66,7 +66,13 @@ type AccessPolicyStatus struct {
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
 // +kubebuilder:printcolumn:name="Ready",type="string",JSONPath=".status.conditions[?(@.type==\"Ready\")].status"
-// +kubebuilder:printcolumn:name="Reason",type="string",JSONPath=".status.conditions[?(@.type==\"Ready\")].reason"
+// +kubebuilder:printcolumn:name="Bucket",type="string",JSONPath=".spec.bucket"
+// +kubebuilder:printcolumn:name="AccessKey",type="string",JSONPath=".spec.accessKey"
+// +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp"
+// +kubebuilder:printcolumn:name="Reason",type="string",JSONPath=".status.conditions[?(@.type==\"Ready\")].reason",priority=1
+// +kubebuilder:printcolumn:name="Read",type="boolean",JSONPath=".spec.permissions.read",priority=1
+// +kubebuilder:printcolumn:name="Write",type="boolean",JSONPath=".spec.permissions.write",priority=1
+// +kubebuilder:printcolumn:name="Owner",type="boolean",JSONPath=".spec.permissions.owner",priority=1
 // AccessPolicy is the Schema for the accesspolicies API
 type AccessPolicy struct {
 	metav1.TypeMeta `json:",inline"`

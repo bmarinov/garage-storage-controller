@@ -55,7 +55,10 @@ type AccessKeyStatus struct {
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
 // +kubebuilder:printcolumn:name="Ready",type="string",JSONPath=".status.conditions[?(@.type==\"Ready\")].status"
-// +kubebuilder:printcolumn:name="Reason",type="string",JSONPath=".status.conditions[?(@.type==\"Ready\")].reason"
+// +kubebuilder:printcolumn:name="Key-ID",type="string",JSONPath=".status.accessKeyId",description="Garage access key identifier"
+// +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp"
+// +kubebuilder:printcolumn:name="Reason",type="string",JSONPath=".status.conditions[?(@.type==\"Ready\")].reason",priority=1
+// +kubebuilder:printcolumn:name="Secret",type="string",JSONPath=".status.secretName",priority=1
 // AccessKey is the Schema for the accesskeys API
 type AccessKey struct {
 	metav1.TypeMeta `json:",inline"`
