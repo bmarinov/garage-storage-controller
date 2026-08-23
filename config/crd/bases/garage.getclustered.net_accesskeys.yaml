@@ -18,8 +18,20 @@ spec:
     - jsonPath: .status.conditions[?(@.type=="Ready")].status
       name: Ready
       type: string
+    - description: Garage access key identifier
+      jsonPath: .status.accessKeyId
+      name: Key-ID
+      type: string
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
     - jsonPath: .status.conditions[?(@.type=="Ready")].reason
       name: Reason
+      priority: 1
+      type: string
+    - jsonPath: .status.secretName
+      name: Secret
+      priority: 1
       type: string
     name: v1alpha1
     schema:

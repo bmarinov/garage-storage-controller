@@ -18,9 +18,30 @@ spec:
     - jsonPath: .status.conditions[?(@.type=="Ready")].status
       name: Ready
       type: string
+    - description: Bucket alias as it exists in Garage
+      jsonPath: .status.bucketName
+      name: Alias
+      type: string
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
     - jsonPath: .status.conditions[?(@.type=="Ready")].reason
       name: Reason
+      priority: 1
       type: string
+    - description: Garage internal bucket identifier
+      jsonPath: .status.bucketId
+      name: ID
+      priority: 1
+      type: string
+    - jsonPath: .spec.maxSize
+      name: Max-Size
+      priority: 1
+      type: string
+    - jsonPath: .spec.maxObjects
+      name: Max-Objects
+      priority: 1
+      type: integer
     name: v1alpha1
     schema:
       openAPIV3Schema:
