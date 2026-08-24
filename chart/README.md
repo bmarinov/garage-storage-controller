@@ -9,6 +9,7 @@ The chart and app are versioned independently.
 
 | Chart Version | App Version  |
 |---------------|--------------|
+| 0.4.1         | v0.5.1       |
 | 0.4.0         | v0.5.0       |
 | 0.3.7         | v0.4.4       |
 | 0.3.6         | v0.4.3       |
