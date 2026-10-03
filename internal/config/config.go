@@ -12,7 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package main
+// Package config reads the controller's Garage settings from environment variables.
+package config
 
 import (
 	"fmt"
@@ -20,13 +21,16 @@ import (
 	"strings"
 )
 
-type controllerConfig struct {
-	garageAPIToken    string
-	garageAPIEndpoint string
-	garageS3Endpoint  string
+// Config holds the Garage settings shared by the controller binaries.
+type Config struct {
+	GarageAPIToken    string
+	GarageAPIEndpoint string
+	GarageS3Endpoint  string
 }
 
-func loadConfig() (*controllerConfig, error) {
+// Load reads the Garage settings from the environment. The error names every
+// required variable that is not set.
+func Load() (*Config, error) {
 	var missing []string
 
 	apiToken, got := os.LookupEnv("GARAGE_API_TOKEN")
@@ -48,9 +52,9 @@ func loadConfig() (*controllerConfig, error) {
 		return nil, fmt.Errorf("missing required env: %s", strings.Join(missing, ", "))
 	}
 
-	return &controllerConfig{
-		garageAPIToken:    apiToken,
-		garageAPIEndpoint: apiEndpoint,
-		garageS3Endpoint:  s3Endpoint,
+	return &Config{
+		GarageAPIToken:    apiToken,
+		GarageAPIEndpoint: apiEndpoint,
+		GarageS3Endpoint:  s3Endpoint,
 	}, nil
 }

@@ -39,6 +39,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 
 	garagev1alpha1 "github.com/bmarinov/garage-storage-controller/api/v1alpha1"
+	"github.com/bmarinov/garage-storage-controller/internal/config"
 	"github.com/bmarinov/garage-storage-controller/internal/controller"
 	"github.com/bmarinov/garage-storage-controller/internal/garage"
 	"github.com/bmarinov/garage-storage-controller/internal/health"
@@ -89,7 +90,7 @@ func main() {
 
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
 
-	cfg, err := loadConfig()
+	cfg, err := config.Load()
 	if err != nil {
 		setupLog.Error(err, "loading controller config")
 		os.Exit(1)
@@ -198,8 +199,8 @@ func main() {
 	crmetrics.Registry.MustRegister(garageMetrics.Collectors()...)
 
 	garageClient := garage.NewClient(
-		cfg.garageAPIEndpoint,
-		cfg.garageAPIToken,
+		cfg.GarageAPIEndpoint,
+		cfg.GarageAPIToken,
 		garage.WithMetrics(garageMetrics),
 	)
 
@@ -213,9 +214,9 @@ func main() {
 		mgr.GetClient(),
 		mgr.GetScheme(),
 		garageClient.BucketClient,
-		cfg.garageS3Endpoint,
+		cfg.GarageS3Endpoint,
 		garageClient.PermissionClient,
-		mgr.GetEventRecorderFor("garage-bucket-controller"),
+		mgr.GetEventRecorder("garage-bucket-controller"),
 	).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "Bucket")
 		os.Exit(1)
@@ -224,7 +225,7 @@ func main() {
 		mgr.GetClient(),
 		mgr.GetScheme(),
 		garageClient.AccessKeyClient,
-		mgr.GetEventRecorderFor("garage-accesskey-controller"),
+		mgr.GetEventRecorder("garage-accesskey-controller"),
 	).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "AccessKey")
 		os.Exit(1)
@@ -233,7 +234,7 @@ func main() {
 		mgr.GetClient(),
 		mgr.GetScheme(),
 		garageClient.PermissionClient,
-		mgr.GetEventRecorderFor("garage-accesspolicy-controller"),
+		mgr.GetEventRecorder("garage-accesspolicy-controller"),
 	).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "AccessPolicy")
 		os.Exit(1)

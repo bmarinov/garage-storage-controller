@@ -26,7 +26,7 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/client-go/tools/record"
+	"k8s.io/client-go/tools/events"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -63,7 +63,7 @@ type BucketReconciler struct {
 	bucket        BucketClient
 	s3APIEndpoint string
 	ownership     OwnershipVerifier
-	recorder      record.EventRecorder
+	recorder      events.EventRecorder
 	// baseRequeueInterval to override in tests. Base delay for the exponential backoff.
 	baseRequeueInterval time.Duration
 }
@@ -74,7 +74,7 @@ func NewBucketReconciler(
 	s3Client BucketClient,
 	s3APIEndpoint string,
 	ownershipVerifier OwnershipVerifier,
-	recorder record.EventRecorder,
+	recorder events.EventRecorder,
 ) *BucketReconciler {
 	return &BucketReconciler{
 		client:              apiClient,
@@ -98,7 +98,7 @@ func (r *BucketReconciler) SetupWithManager(mgr ctrl.Manager) error {
 // +kubebuilder:rbac:groups=garage.getclustered.net,resources=buckets,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=garage.getclustered.net,resources=buckets/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=garage.getclustered.net,resources=buckets/finalizers,verbs=update
-// +kubebuilder:rbac:groups="",resources=events,verbs=create;patch
+// +kubebuilder:rbac:groups=events.k8s.io,resources=events,verbs=create;patch
 
 func (r *BucketReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	bucket := garagev1alpha1.Bucket{}
@@ -195,7 +195,7 @@ func (r *BucketReconciler) reconcileBucket(ctx context.Context, bucket *garagev1
 			return ctrl.Result{}, nil
 		}
 		if apierrors.IsForbidden(err) {
-			r.recorder.Eventf(bucket, corev1.EventTypeWarning, ReasonConfigMapAccessForbidden,
+			r.recorder.Eventf(bucket, nil, corev1.EventTypeWarning, ReasonConfigMapAccessForbidden, ActionWriteConfigMap,
 				"Cannot access ConfigMaps in namespace %q: %v. %s",
 				bucket.Namespace, err, rbacRemedyMsg)
 			updateBucketCMCondition(bucket, metav1.ConditionFalse,
@@ -314,10 +314,12 @@ func (r *BucketReconciler) resolveNewBucket(ctx context.Context, bucket *garagev
 			s3Bucket, err = r.bucket.Create(ctx, alias)
 			if err != nil {
 				markBucketNotReady(bucket, "CreateFailed", "Failed to create bucket '%s': %v", alias, err)
-				r.recorder.Eventf(bucket, corev1.EventTypeWarning, ReasonBucketCreateFailed, "Failed to create Garage bucket %q: %v", alias, err)
+				r.recorder.Eventf(bucket, nil, corev1.EventTypeWarning, ReasonBucketCreateFailed, ActionCreateBucket,
+					"Failed to create Garage bucket %q: %v", alias, err)
 				return s3.Bucket{}, "", fmt.Errorf("create new bucket: %w", err)
 			}
-			r.recorder.Eventf(bucket, corev1.EventTypeNormal, ReasonBucketCreated, "Created Garage bucket %q", alias)
+			r.recorder.Eventf(bucket, nil, corev1.EventTypeNormal, ReasonBucketCreated, ActionCreateBucket,
+				"Created Garage bucket %q", alias)
 		} else {
 			markBucketNotReady(bucket, "UnknownState", "S3 API error: %v", err)
 			return s3.Bucket{}, "", fmt.Errorf("retrieving existing bucket: %w", err)
@@ -333,7 +335,7 @@ func (r *BucketReconciler) resolveExistingBucket(ctx context.Context, bucket *ga
 	err := r.client.Get(ctx, client.ObjectKey{Namespace: bucket.Namespace, Name: spec.OwnerKeySecret}, &secret)
 	if err != nil {
 		if apierrors.IsForbidden(err) {
-			r.recorder.Eventf(bucket, corev1.EventTypeWarning, ReasonSecretAccessForbidden,
+			r.recorder.Eventf(bucket, nil, corev1.EventTypeWarning, ReasonSecretAccessForbidden, ActionReadSecret,
 				"Cannot access Secrets in namespace %q: %v. %s",
 				bucket.Namespace, err, rbacRemedyMsg)
 			markBucketNotReady(bucket, ReasonSecretAccessForbidden,

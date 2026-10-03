@@ -26,7 +26,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/client-go/tools/record"
+	"k8s.io/client-go/tools/events"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
@@ -105,7 +105,7 @@ var _ = Describe("AccessPolicy Controller", func() {
 			Expect(k8sClient.Create(ctx, &p)).To(Succeed())
 			objID := types.NamespacedName{Namespace: namespace, Name: p.Name}
 
-			sut := NewAccessPolicyReconciler(k8sClient, k8sClient.Scheme(), newPermissionClientFake(), record.NewFakeRecorder(10))
+			sut := NewAccessPolicyReconciler(k8sClient, k8sClient.Scheme(), newPermissionClientFake(), events.NewFakeRecorder(10))
 
 			Eventually(func(g Gomega) {
 				_, err := sut.Reconcile(ctx,
@@ -188,7 +188,7 @@ var _ = Describe("AccessPolicy Controller", func() {
 					k8sClient,
 					k8sClient.Scheme(),
 					newPermissionClientFake(),
-					record.NewFakeRecorder(10),
+					events.NewFakeRecorder(10),
 				)
 				_, err := sut.Reconcile(ctx,
 					reconcile.Request{NamespacedName: objID})
@@ -227,7 +227,7 @@ var _ = Describe("AccessPolicy Controller", func() {
 			}
 			Expect(k8sClient.Create(ctx, &policy)).To(Succeed())
 
-			sut := NewAccessPolicyReconciler(k8sClient, k8sClient.Scheme(), newPermissionClientFake(), record.NewFakeRecorder(10))
+			sut := NewAccessPolicyReconciler(k8sClient, k8sClient.Scheme(), newPermissionClientFake(), events.NewFakeRecorder(10))
 			objID := types.NamespacedName{
 				Namespace: policy.Namespace,
 				Name:      policy.Name,
@@ -286,7 +286,7 @@ var _ = Describe("AccessPolicy Controller", func() {
 					permissionClientFake: newPermissionClientFake(),
 					err:                  errors.New("garage unavailable"),
 				},
-				record.NewFakeRecorder(10))
+				events.NewFakeRecorder(10))
 			objID := types.NamespacedName{
 				Namespace: policy.Namespace,
 				Name:      policy.Name,
@@ -332,7 +332,7 @@ var _ = Describe("AccessPolicy Controller", func() {
 			}
 			Expect(k8sClient.Create(ctx, &policy)).To(Succeed())
 
-			rec := record.NewFakeRecorder(10)
+			rec := events.NewFakeRecorder(10)
 			sut := NewAccessPolicyReconciler(k8sClient,
 				k8sClient.Scheme(),
 				failSetPermissionsFake{
@@ -375,7 +375,7 @@ var _ = Describe("AccessPolicy Controller", func() {
 			}
 			Expect(k8sClient.Create(ctx, &policy)).To(Succeed())
 
-			rec := record.NewFakeRecorder(10)
+			rec := events.NewFakeRecorder(10)
 			sut := NewAccessPolicyReconciler(k8sClient, k8sClient.Scheme(), newPermissionClientFake(), rec)
 			objID := types.NamespacedName{
 				Namespace: policy.Namespace,
@@ -408,7 +408,7 @@ var _ = Describe("AccessPolicy Controller", func() {
 			}
 			Expect(k8sClient.Create(ctx, &policy)).To(Succeed())
 
-			rec := record.NewFakeRecorder(10)
+			rec := events.NewFakeRecorder(10)
 			sut := NewAccessPolicyReconciler(k8sClient, k8sClient.Scheme(),
 				failSetPermissionsFake{
 					permissionClientFake: newPermissionClientFake(),
@@ -820,6 +820,6 @@ func setupPolicyTest() (*AccessPolicyReconciler, *permissionClientFake) {
 		k8sClient,
 		k8sClient.Scheme(),
 		apiClient,
-		record.NewFakeRecorder(10),
+		events.NewFakeRecorder(10),
 	), apiClient
 }
