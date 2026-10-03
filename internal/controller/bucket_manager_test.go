@@ -21,10 +21,12 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	corev1 "k8s.io/api/core/v1"
+	eventsv1 "k8s.io/api/events/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/config"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
@@ -67,7 +69,7 @@ var _ = Describe("Bucket controller manager", Ordered, func() {
 			s3Fake,
 			"http://s3.bar.com",
 			permissionsClient,
-			mgr.GetEventRecorderFor("garage-bucket-controller"),
+			mgr.GetEventRecorder("garage-bucket-controller"),
 		)
 		r.baseRequeueInterval = time.Second
 		Expect(r.SetupWithManager(mgr)).To(Succeed())
@@ -137,6 +139,21 @@ var _ = Describe("Bucket controller manager", Ordered, func() {
 			g.Expect(k8sClient.Get(ctx, namespacedName(bucket.ObjectMeta), &bucket)).To(Succeed())
 			g.Expect(checkCondition(bucket.Status.Conditions, Ready, metav1.ConditionTrue)).To(Succeed())
 		}, "20s").Should(Succeed())
+	})
+
+	It("records an events.k8s.io event with the CreateBucket action for a new bucket", func() {
+		bucket := newBucket(namespace)
+		Expect(k8sClient.Create(ctx, &bucket)).To(Succeed())
+
+		Eventually(func(g Gomega) {
+			var eventList eventsv1.EventList
+			g.Expect(k8sClient.List(ctx, &eventList, client.InNamespace(namespace))).To(Succeed())
+			g.Expect(eventList.Items).To(ContainElement(SatisfyAll(
+				HaveField("Regarding.Name", bucket.Name),
+				HaveField("Reason", ReasonBucketCreated),
+				HaveField("Action", ActionCreateBucket),
+			)))
+		}).Should(Succeed())
 	})
 
 	It("existing bucket eventually Ready after missing owner key Secret is created", func() {

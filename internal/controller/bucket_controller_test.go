@@ -29,7 +29,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/client-go/tools/record"
+	"k8s.io/client-go/tools/events"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	corev1 "k8s.io/api/core/v1"
@@ -64,7 +64,7 @@ var _ = Describe("Bucket Controller", func() {
 			By("reconciling")
 			var s3Fake = newS3APIFake()
 			s3Endpoint := "https://foo.bar:3456/baz"
-			controllerReconciler := NewBucketReconciler(k8sClient, k8sClient.Scheme(), s3Fake, s3Endpoint, nil, record.NewFakeRecorder(10))
+			controllerReconciler := NewBucketReconciler(k8sClient, k8sClient.Scheme(), s3Fake, s3Endpoint, nil, events.NewFakeRecorder(10))
 
 			_, err := controllerReconciler.Reconcile(ctx,
 				reconcile.Request{NamespacedName: namespacedName(bucket.ObjectMeta)})
@@ -108,7 +108,7 @@ var _ = Describe("Bucket Controller", func() {
 			Expect(k8sClient.Create(ctx, &resource)).To(Succeed())
 			var s3Fake = newS3APIFake()
 			s3API := "https://s3.test.fooz:3909"
-			sut := NewBucketReconciler(k8sClient, k8sClient.Scheme(), s3Fake, s3API, nil, record.NewFakeRecorder(10))
+			sut := NewBucketReconciler(k8sClient, k8sClient.Scheme(), s3Fake, s3API, nil, events.NewFakeRecorder(10))
 
 			// Note: need to reconcile with Eventually once finalizer is added:
 			_, err := sut.Reconcile(ctx,
@@ -229,7 +229,7 @@ var _ = Describe("Bucket Controller", func() {
 			Expect(k8sClient.Create(ctx, &bucket)).To(Succeed())
 
 			By("reconciling against a fresh Garage fake")
-			rec := record.NewFakeRecorder(10)
+			rec := events.NewFakeRecorder(10)
 			s3Fake := newS3APIFake()
 			sut := NewBucketReconciler(k8sClient, k8sClient.Scheme(), s3Fake, "https://s3.test:9000", nil, rec)
 			_, err := sut.Reconcile(ctx, reconcile.Request{NamespacedName: namespacedName(bucket.ObjectMeta)})
@@ -245,7 +245,7 @@ var _ = Describe("Bucket Controller", func() {
 			Expect(k8sClient.Create(ctx, &bucket)).To(Succeed())
 
 			By("pre-seeding existing bucket in the Garage instance")
-			rec := record.NewFakeRecorder(10)
+			rec := events.NewFakeRecorder(10)
 			s3Fake := newS3APIFake()
 			alias := suffixedResourceName(bucket.Spec.Name, bucket.ObjectMeta)
 			s3Fake.buckets["existing-id"] = s3.Bucket{ID: "existing-id", GlobalAliases: []string{alias}}
@@ -265,7 +265,7 @@ var _ = Describe("Bucket Controller", func() {
 			Expect(k8sClient.Create(ctx, &bucket)).To(Succeed())
 
 			By("reconciling and creating the Garage bucket")
-			rec := record.NewFakeRecorder(10)
+			rec := events.NewFakeRecorder(10)
 			s3Fake := newS3APIFake()
 			sut := NewBucketReconciler(k8sClient, k8sClient.Scheme(), s3Fake, "https://s3.test:9000", nil, rec)
 			_, err := sut.Reconcile(ctx, reconcile.Request{NamespacedName: namespacedName(bucket.ObjectMeta)})
@@ -291,7 +291,7 @@ var _ = Describe("Bucket Controller", func() {
 			Expect(k8sClient.Create(ctx, &bucket)).To(Succeed())
 
 			By("reconciling against a Garage fake that fails to create the bucket")
-			rec := record.NewFakeRecorder(10)
+			rec := events.NewFakeRecorder(10)
 			s3Fake := failCreateS3APIFake{s3APIFake: newS3APIFake(), err: errors.New("garage unavailable")}
 			sut := NewBucketReconciler(k8sClient, k8sClient.Scheme(), s3Fake, "https://s3.test:9000", nil, rec)
 			_, err := sut.Reconcile(ctx, reconcile.Request{NamespacedName: namespacedName(bucket.ObjectMeta)})
@@ -307,7 +307,7 @@ var _ = Describe("Bucket Controller", func() {
 			Expect(k8sClient.Create(ctx, &bucket)).To(Succeed())
 
 			By("reconciling in a namespace with no access to ConfigMaps")
-			rec := record.NewFakeRecorder(10)
+			rec := events.NewFakeRecorder(10)
 			s3Fake := newS3APIFake()
 			denied := forbidClientFake{Client: k8sClient, resource: forbidConfigMaps}
 			sut := NewBucketReconciler(denied, k8sClient.Scheme(), s3Fake, "https://s3.test:9000", nil, rec)
@@ -332,7 +332,7 @@ var _ = Describe("Bucket Controller", func() {
 			Expect(k8sClient.Create(ctx, &bucket)).To(Succeed())
 
 			By("reconciling against a client with failing ConfigMap read")
-			rec := record.NewFakeRecorder(10)
+			rec := events.NewFakeRecorder(10)
 			s3Fake := newS3APIFake()
 			By("failing for unrelated reason")
 			failing := failGetClientFake{
@@ -775,7 +775,7 @@ var _ = Describe("Bucket Controller", func() {
 			existingBucketID := fixture.RandAlpha(12)
 
 			By("pre-creating the Garage bucket")
-			rec := record.NewFakeRecorder(10)
+			rec := events.NewFakeRecorder(10)
 			s3API := newS3APIFake()
 			s3API.buckets[existingBucketID] = s3.Bucket{
 				ID:            existingBucketID,
@@ -822,7 +822,7 @@ var _ = Describe("Bucket Controller", func() {
 			Expect(k8sClient.Create(ctx, &bucket)).To(Succeed())
 
 			By("reconciling in a namespace with no access to Secrets")
-			rec := record.NewFakeRecorder(10)
+			rec := events.NewFakeRecorder(10)
 			denied := forbidClientFake{Client: k8sClient, resource: forbidSecrets}
 			sut := NewBucketReconciler(
 				denied, k8sClient.Scheme(), s3API, "https://s3.foo/bar:123", newPermissionClientFake(), rec)
@@ -861,7 +861,7 @@ func shouldReconcile(controller *BucketReconciler, obj metav1.ObjectMeta) {
 func setupBucket() (*BucketReconciler, *s3APIFake, *permissionClientFake) {
 	s3API := newS3APIFake()
 	perm := newPermissionClientFake()
-	sut := NewBucketReconciler(k8sClient, k8sClient.Scheme(), s3API, "https://s3.foo/bar:123", perm, record.NewFakeRecorder(10))
+	sut := NewBucketReconciler(k8sClient, k8sClient.Scheme(), s3API, "https://s3.foo/bar:123", perm, events.NewFakeRecorder(10))
 	return sut, s3API, perm
 }
 

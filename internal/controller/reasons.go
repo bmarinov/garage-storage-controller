@@ -26,5 +26,15 @@ const (
 	ReasonSecretAccessForbidden    = "SecretAccessForbidden"    // type Warning: no Secret access in the namespace
 )
 
+// Event actions: what the controller was doing when it recorded the event.
+// The events.k8s.io/v1 API requires an action on every event.
+const (
+	ActionCreateBucket   = "CreateBucket"
+	ActionWriteConfigMap = "WriteConfigMap"
+	ActionReadSecret     = "ReadSecret"
+	ActionWriteSecret    = "WriteSecret"
+	ActionSetPermissions = "SetPermissions"
+)
+
 // rbacRemedyMsg provides additional context for the RBAC failure.
 const rbacRemedyMsg = "Grant the controller namespace-access Role and RoleBinding."

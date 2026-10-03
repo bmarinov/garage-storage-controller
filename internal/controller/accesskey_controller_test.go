@@ -28,7 +28,7 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/client-go/tools/record"
+	"k8s.io/client-go/tools/events"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -147,7 +147,7 @@ var _ = Describe("AccessKey Controller", func() {
 		It("persists the failure reason in status when the Secret cannot be read", func() {
 			By("reconciling against a client with denied Secret read")
 			failing := failGetClientFake{Client: k8sClient, resource: forbidSecrets, err: errors.New("etcd unavailable")}
-			sut := NewAccessKeyReconciler(failing, k8sClient.Scheme(), newAccessMgrFake(), record.NewFakeRecorder(10))
+			sut := NewAccessKeyReconciler(failing, k8sClient.Scheme(), newAccessMgrFake(), events.NewFakeRecorder(10))
 
 			_, err := sut.Reconcile(ctx, reconcile.Request{
 				NamespacedName: typeNamespacedName,
@@ -169,7 +169,7 @@ var _ = Describe("AccessKey Controller", func() {
 
 		It("should emit SecretAccessForbidden event when RBAC denies Secret access", func() {
 			By("reconciling in a namespace where the controller has no access")
-			rec := record.NewFakeRecorder(10)
+			rec := events.NewFakeRecorder(10)
 			denied := forbidClientFake{Client: k8sClient, resource: forbidSecrets}
 			sut := NewAccessKeyReconciler(denied, k8sClient.Scheme(), newAccessMgrFake(), rec)
 
@@ -193,7 +193,7 @@ var _ = Describe("AccessKey Controller", func() {
 
 		It("should not emit SecretAccessForbidden when no RBAC error", func() {
 			By("reconciling with unrelated Secret read fail")
-			rec := record.NewFakeRecorder(10)
+			rec := events.NewFakeRecorder(10)
 			failing := failGetClientFake{Client: k8sClient, resource: forbidSecrets, err: errors.New("foo failed bar")}
 			sut := NewAccessKeyReconciler(failing, k8sClient.Scheme(), newAccessMgrFake(), rec)
 
@@ -592,7 +592,7 @@ func namespacedName(m metav1.ObjectMeta) types.NamespacedName {
 func setup() (*AccessKeyReconciler, *accessMgrFake) {
 	externalAPI := newAccessMgrFake()
 
-	return NewAccessKeyReconciler(k8sClient, k8sClient.Scheme(), externalAPI, record.NewFakeRecorder(10)), externalAPI
+	return NewAccessKeyReconciler(k8sClient, k8sClient.Scheme(), externalAPI, events.NewFakeRecorder(10)), externalAPI
 }
 
 type accessMgrFake struct {

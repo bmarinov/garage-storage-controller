@@ -27,7 +27,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/client-go/tools/record"
+	"k8s.io/client-go/tools/events"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -49,13 +49,13 @@ type AccessPolicyReconciler struct {
 	client      client.Client
 	scheme      *runtime.Scheme
 	adminClient PermissionClient
-	recorder    record.EventRecorder
+	recorder    events.EventRecorder
 }
 
 func NewAccessPolicyReconciler(c client.Client,
 	scheme *runtime.Scheme,
 	ac PermissionClient,
-	recorder record.EventRecorder,
+	recorder events.EventRecorder,
 ) *AccessPolicyReconciler {
 	return &AccessPolicyReconciler{
 		client:      c,
@@ -89,7 +89,7 @@ const bucketLabel = "garage.getclustered.net/bucket-name"
 // +kubebuilder:rbac:groups=garage.getclustered.net,resources=accesspolicies,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=garage.getclustered.net,resources=accesspolicies/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=garage.getclustered.net,resources=accesspolicies/finalizers,verbs=update
-// +kubebuilder:rbac:groups="",resources=events,verbs=create;patch
+// +kubebuilder:rbac:groups=events.k8s.io,resources=events,verbs=create;patch
 
 func (r *AccessPolicyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
@@ -287,7 +287,7 @@ func (r *AccessPolicyReconciler) reconcilePolicy(ctx context.Context, policy *ga
 			Owner: policy.Spec.Permissions.Owner,
 		})
 	if err != nil {
-		r.recorder.Eventf(policy, corev1.EventTypeWarning, ReasonPolicyAssignmentFailed,
+		r.recorder.Eventf(policy, nil, corev1.EventTypeWarning, ReasonPolicyAssignmentFailed, ActionSetPermissions,
 			"Failed to apply access policy to Garage: %v", err)
 		markPolicyConditionNotReady(policy,
 			PolicyAssignmentReady,
