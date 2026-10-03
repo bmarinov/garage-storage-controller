@@ -39,6 +39,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 
 	garagev1alpha1 "github.com/bmarinov/garage-storage-controller/api/v1alpha1"
+	"github.com/bmarinov/garage-storage-controller/internal/config"
 	"github.com/bmarinov/garage-storage-controller/internal/controller"
 	"github.com/bmarinov/garage-storage-controller/internal/garage"
 	"github.com/bmarinov/garage-storage-controller/internal/health"
@@ -89,7 +90,7 @@ func main() {
 
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
 
-	cfg, err := loadConfig()
+	cfg, err := config.Load()
 	if err != nil {
 		setupLog.Error(err, "loading controller config")
 		os.Exit(1)
@@ -198,8 +199,8 @@ func main() {
 	crmetrics.Registry.MustRegister(garageMetrics.Collectors()...)
 
 	garageClient := garage.NewClient(
-		cfg.garageAPIEndpoint,
-		cfg.garageAPIToken,
+		cfg.GarageAPIEndpoint,
+		cfg.GarageAPIToken,
 		garage.WithMetrics(garageMetrics),
 	)
 
@@ -213,7 +214,7 @@ func main() {
 		mgr.GetClient(),
 		mgr.GetScheme(),
 		garageClient.BucketClient,
-		cfg.garageS3Endpoint,
+		cfg.GarageS3Endpoint,
 		garageClient.PermissionClient,
 		mgr.GetEventRecorderFor("garage-bucket-controller"),
 	).SetupWithManager(mgr); err != nil {
