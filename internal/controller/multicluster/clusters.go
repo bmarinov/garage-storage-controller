@@ -83,7 +83,7 @@ func (c *clusters) newReconcilers(cl cluster.Cluster) (*reconcilers, error) {
 			c.garage.Buckets,
 			c.garage.S3Endpoint,
 			c.garage.Ownership,
-			cl.GetEventRecorderFor("garage-bucket-controller"),
+			cl.GetEventRecorder("garage-bucket-controller"),
 		),
 	}, nil
 }
