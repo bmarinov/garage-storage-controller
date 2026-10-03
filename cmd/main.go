@@ -216,7 +216,7 @@ func main() {
 		garageClient.BucketClient,
 		cfg.GarageS3Endpoint,
 		garageClient.PermissionClient,
-		mgr.GetEventRecorderFor("garage-bucket-controller"),
+		mgr.GetEventRecorder("garage-bucket-controller"),
 	).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "Bucket")
 		os.Exit(1)
@@ -225,7 +225,7 @@ func main() {
 		mgr.GetClient(),
 		mgr.GetScheme(),
 		garageClient.AccessKeyClient,
-		mgr.GetEventRecorderFor("garage-accesskey-controller"),
+		mgr.GetEventRecorder("garage-accesskey-controller"),
 	).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "AccessKey")
 		os.Exit(1)
@@ -234,7 +234,7 @@ func main() {
 		mgr.GetClient(),
 		mgr.GetScheme(),
 		garageClient.PermissionClient,
-		mgr.GetEventRecorderFor("garage-accesspolicy-controller"),
+		mgr.GetEventRecorder("garage-accesspolicy-controller"),
 	).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "AccessPolicy")
 		os.Exit(1)
