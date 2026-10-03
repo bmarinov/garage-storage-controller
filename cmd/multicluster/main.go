@@ -111,10 +111,11 @@ func main() {
 	health.PreflightCheck(preflightCtx, garageClient)
 
 	if err := multicluster.Setup(mcMgr, multicluster.Garage{
-		Buckets:    garageClient.BucketClient,
-		Ownership:  garageClient.PermissionClient,
-		AccessKeys: garageClient.AccessKeyClient,
-		S3Endpoint: cfg.GarageS3Endpoint,
+		Buckets:     garageClient.BucketClient,
+		Ownership:   garageClient.PermissionClient,
+		AccessKeys:  garageClient.AccessKeyClient,
+		Permissions: garageClient.PermissionClient,
+		S3Endpoint:  cfg.GarageS3Endpoint,
 	}); err != nil {
 		setupLog.Error(err, "unable to set up controllers")
 		os.Exit(1)

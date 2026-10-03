@@ -70,9 +70,9 @@ func (r *AccessPolicyReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&garagev1alpha1.AccessPolicy{}).
 		Watches(&garagev1alpha1.AccessKey{},
-			handler.EnqueueRequestsFromMapFunc(r.findPoliciesForAccessKey)).
+			handler.EnqueueRequestsFromMapFunc(r.FindPoliciesForAccessKey)).
 		Watches(&garagev1alpha1.Bucket{},
-			handler.EnqueueRequestsFromMapFunc(r.findPoliciesForBucket)).
+			handler.EnqueueRequestsFromMapFunc(r.FindPoliciesForBucket)).
 		Named("accesspolicy").
 		Complete(r)
 }
@@ -185,7 +185,9 @@ func (r *AccessPolicyReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	return result, resultErr
 }
 
-func (r *AccessPolicyReconciler) findPoliciesForAccessKey(ctx context.Context, obj client.Object) []reconcile.Request {
+// FindPoliciesForAccessKey returns a request for each AccessPolicy in the AccessKey namespace
+// with accesskey-name label equal to the AccessKey meta.name.
+func (r *AccessPolicyReconciler) FindPoliciesForAccessKey(ctx context.Context, obj client.Object) []reconcile.Request {
 	accessKey := obj.(*garagev1alpha1.AccessKey)
 	var policies garagev1alpha1.AccessPolicyList
 	err := r.client.List(ctx, &policies,
@@ -209,7 +211,9 @@ func (r *AccessPolicyReconciler) findPoliciesForAccessKey(ctx context.Context, o
 	return requests
 }
 
-func (r *AccessPolicyReconciler) findPoliciesForBucket(ctx context.Context, obj client.Object) []reconcile.Request {
+// FindPoliciesForBucket returns a request for each AccessPolicy in the Bucket namespace
+// whose bucket-name label matches the Bucket name.
+func (r *AccessPolicyReconciler) FindPoliciesForBucket(ctx context.Context, obj client.Object) []reconcile.Request {
 	bucket := obj.(*garagev1alpha1.Bucket)
 	var policies garagev1alpha1.AccessPolicyList
 	err := r.client.List(ctx, &policies,

@@ -23,8 +23,14 @@ import (
 	"fmt"
 
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/cluster"
+	"sigs.k8s.io/controller-runtime/pkg/handler"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	mcbuilder "sigs.k8s.io/multicluster-runtime/pkg/builder"
+	mchandler "sigs.k8s.io/multicluster-runtime/pkg/handler"
 	mcmanager "sigs.k8s.io/multicluster-runtime/pkg/manager"
+	"sigs.k8s.io/multicluster-runtime/pkg/multicluster"
 	mcreconcile "sigs.k8s.io/multicluster-runtime/pkg/reconcile"
 
 	garagev1alpha1 "github.com/bmarinov/garage-storage-controller/api/v1alpha1"
@@ -33,10 +39,11 @@ import (
 
 // Garage holds the Garage clients and settings shared by all clusters.
 type Garage struct {
-	Buckets    controller.BucketClient
-	Ownership  controller.OwnershipVerifier
-	AccessKeys controller.AccessKeyManager
-	S3Endpoint string
+	Buckets     controller.BucketClient
+	Ownership   controller.OwnershipVerifier
+	AccessKeys  controller.AccessKeyManager
+	Permissions controller.PermissionClient
+	S3Endpoint  string
 }
 
 // Setup registers the controllers with mgr.
@@ -55,7 +62,38 @@ func Setup(mgr mcmanager.Manager, garage Garage) error {
 		Complete(accessKeyController{clusters: c}); err != nil {
 		return fmt.Errorf("setting up accesskey controller: %w", err)
 	}
+	if err := mcbuilder.ControllerManagedBy(mgr).
+		For(&garagev1alpha1.AccessPolicy{}).
+		Watches(&garagev1alpha1.AccessKey{},
+			enqueuePolicies(c, (*controller.AccessPolicyReconciler).FindPoliciesForAccessKey)).
+		Watches(&garagev1alpha1.Bucket{},
+			enqueuePolicies(c, (*controller.AccessPolicyReconciler).FindPoliciesForBucket)).
+		Named("accesspolicy").
+		Complete(accessPolicyController{clusters: c}); err != nil {
+		return fmt.Errorf("setting up accesspolicy controller: %w", err)
+	}
 	return nil
+}
+
+// enqueuePolicies queues the AccessPolicies that reference a changed AccessKey or Bucket.
+// It finds and queues them in the cluster where the change happened.
+func enqueuePolicies(
+	c *clusters,
+	find func(*controller.AccessPolicyReconciler, context.Context, client.Object) []reconcile.Request,
+) mchandler.TypedEventHandlerFunc[client.Object, mcreconcile.Request] {
+	return func(name multicluster.ClusterName, cl cluster.Cluster) handler.TypedEventHandler[client.Object, mcreconcile.Request] {
+		return mchandler.TypedForCluster[client.Object](
+			handler.EnqueueRequestsFromMapFunc(func(ctx context.Context, obj client.Object) []reconcile.Request {
+				r, err := c.forCluster(name, cl)
+				if err != nil {
+					ctrl.LoggerFrom(ctx).Error(err, "mapping event to AccessPolicies", "cluster", name)
+					return nil
+				}
+				return find(r.accessPolicy, ctx, obj)
+			}),
+			name,
+		)
+	}
 }
 
 // bucketController passes each request to the BucketReconciler of the request's cluster.
@@ -82,4 +120,17 @@ func (a accessKeyController) Reconcile(ctx context.Context, req mcreconcile.Requ
 		return ctrl.Result{}, err
 	}
 	return r.accessKey.Reconcile(ctx, req.Request)
+}
+
+// accessPolicyController passes each request to the AccessPolicyReconciler of the request's cluster.
+type accessPolicyController struct {
+	clusters *clusters
+}
+
+func (a accessPolicyController) Reconcile(ctx context.Context, req mcreconcile.Request) (ctrl.Result, error) {
+	r, err := a.clusters.get(ctx, req.ClusterName)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+	return r.accessPolicy.Reconcile(ctx, req.Request)
 }

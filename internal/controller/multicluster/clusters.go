@@ -29,8 +29,9 @@ import (
 // reconcilers holds the reconcilers for one cluster. They share one client, as the
 // reconcilers in cmd/main.go share mgr.GetClient().
 type reconcilers struct {
-	bucket    *controller.BucketReconciler
-	accessKey *controller.AccessKeyReconciler
+	bucket       *controller.BucketReconciler
+	accessKey    *controller.AccessKeyReconciler
+	accessPolicy *controller.AccessPolicyReconciler
 }
 
 // clusters creates the reconcilers for a cluster on first use and keeps them.
@@ -51,7 +52,18 @@ func newClusters(mgr mcmanager.Manager, garage Garage) *clusters {
 }
 
 // get returns the reconcilers for the named cluster, creating them on first use.
+// If the cluster is gone, the error wraps multicluster.ErrClusterNotFound.
 func (c *clusters) get(ctx context.Context, name multicluster.ClusterName) (*reconcilers, error) {
+	cl, err := c.mgr.GetCluster(ctx, name)
+	if err != nil {
+		return nil, fmt.Errorf("getting cluster %q: %w", name, err)
+	}
+	return c.forCluster(name, cl)
+}
+
+// forCluster returns the reconcilers for cl, creating them on first use. Watch handlers
+// call it directly, because they are given the cluster.
+func (c *clusters) forCluster(name multicluster.ClusterName, cl cluster.Cluster) (*reconcilers, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -59,10 +71,6 @@ func (c *clusters) get(ctx context.Context, name multicluster.ClusterName) (*rec
 		return r, nil
 	}
 
-	cl, err := c.mgr.GetCluster(ctx, name)
-	if err != nil {
-		return nil, fmt.Errorf("getting cluster %q: %w", name, err)
-	}
 	r, err := c.newReconcilers(cl)
 	if err != nil {
 		return nil, fmt.Errorf("creating reconcilers for cluster %q: %w", name, err)
@@ -91,6 +99,12 @@ func (c *clusters) newReconcilers(cl cluster.Cluster) (*reconcilers, error) {
 			cl.GetScheme(),
 			c.garage.AccessKeys,
 			cl.GetEventRecorder("garage-accesskey-controller"),
+		),
+		accessPolicy: controller.NewAccessPolicyReconciler(
+			apiClient,
+			cl.GetScheme(),
+			c.garage.Permissions,
+			cl.GetEventRecorder("garage-accesspolicy-controller"),
 		),
 	}, nil
 }
