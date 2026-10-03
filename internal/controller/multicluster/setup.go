@@ -35,6 +35,7 @@ import (
 type Garage struct {
 	Buckets    controller.BucketClient
 	Ownership  controller.OwnershipVerifier
+	AccessKeys controller.AccessKeyManager
 	S3Endpoint string
 }
 
@@ -47,6 +48,12 @@ func Setup(mgr mcmanager.Manager, garage Garage) error {
 		Named("bucket").
 		Complete(bucketController{clusters: c}); err != nil {
 		return fmt.Errorf("setting up bucket controller: %w", err)
+	}
+	if err := mcbuilder.ControllerManagedBy(mgr).
+		For(&garagev1alpha1.AccessKey{}).
+		Named("accesskey").
+		Complete(accessKeyController{clusters: c}); err != nil {
+		return fmt.Errorf("setting up accesskey controller: %w", err)
 	}
 	return nil
 }
@@ -62,4 +69,17 @@ func (b bucketController) Reconcile(ctx context.Context, req mcreconcile.Request
 		return ctrl.Result{}, err
 	}
 	return r.bucket.Reconcile(ctx, req.Request)
+}
+
+// accessKeyController passes each request to the AccessKeyReconciler of the request's cluster.
+type accessKeyController struct {
+	clusters *clusters
+}
+
+func (a accessKeyController) Reconcile(ctx context.Context, req mcreconcile.Request) (ctrl.Result, error) {
+	r, err := a.clusters.get(ctx, req.ClusterName)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+	return r.accessKey.Reconcile(ctx, req.Request)
 }

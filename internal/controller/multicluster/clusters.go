@@ -29,7 +29,8 @@ import (
 // reconcilers holds the reconcilers for one cluster. They share one client, as the
 // reconcilers in cmd/main.go share mgr.GetClient().
 type reconcilers struct {
-	bucket *controller.BucketReconciler
+	bucket    *controller.BucketReconciler
+	accessKey *controller.AccessKeyReconciler
 }
 
 // clusters creates the reconcilers for a cluster on first use and keeps them.
@@ -84,6 +85,12 @@ func (c *clusters) newReconcilers(cl cluster.Cluster) (*reconcilers, error) {
 			c.garage.S3Endpoint,
 			c.garage.Ownership,
 			cl.GetEventRecorder("garage-bucket-controller"),
+		),
+		accessKey: controller.NewAccessKeyReconciler(
+			apiClient,
+			cl.GetScheme(),
+			c.garage.AccessKeys,
+			cl.GetEventRecorder("garage-accesskey-controller"),
 		),
 	}, nil
 }
