@@ -235,10 +235,13 @@ func (a *AccessKeyClient) get(ctx context.Context, id string, search string, ret
 		if response.StatusCode == http.StatusNotFound {
 			return AccessKeyResponse{}, fmt.Errorf("%w: id '%s'; search '%s'", s3.ErrResourceNotFound, id, search)
 		}
-		// TODO: inspect server side code, why bad request? workaround:
-		if response.StatusCode == http.StatusBadRequest &&
-			search != "" && id == "" {
-			return AccessKeyResponse{}, fmt.Errorf("bad request looking for key with search term %s: %w", search, s3.ErrResourceNotFound)
+		// when exactly one of id or search: HTTP400 is ">1 matching keys"
+		if response.StatusCode == http.StatusBadRequest && search != "" && id == "" {
+			apiErr, err := unmarshalBody[ErrorResponse](response.Body)
+			if err != nil {
+				return AccessKeyResponse{}, fmt.Errorf("%w: search %q: unreadable error body: %w", s3.ErrMultipleMatches, search, err)
+			}
+			return AccessKeyResponse{}, fmt.Errorf("%w: search %q: %s", s3.ErrMultipleMatches, search, apiErr.Message)
 		}
 		return AccessKeyResponse{}, fmt.Errorf("unexpected status code %d", response.StatusCode)
 	}

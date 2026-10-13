@@ -20,6 +20,9 @@ var (
 	ErrBucketExists = errors.New("bucket with alias already exists")
 
 	ErrResourceNotFound = errors.New("resource not found")
+
+	// ErrMultipleMatches reports a lookup by name that matched more than one resource.
+	ErrMultipleMatches = errors.New("multiple resources match")
 )
 
 type Bucket struct {
