@@ -24,6 +24,12 @@ type AdminTokenInfo struct {
 	Expiration *string  `json:"expiration"`
 }
 
+// ErrorResponse from the Garage admin API.
+type ErrorResponse struct {
+	Code    string `json:"code"`
+	Message string `json:"message"`
+}
+
 type BucketUpdateRequest struct {
 	Quotas Quotas `json:"quotas"`
 }

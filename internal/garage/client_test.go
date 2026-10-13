@@ -21,6 +21,7 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/bmarinov/garage-storage-controller/internal/garage/integrationtests"
@@ -337,6 +338,26 @@ func TestAccessKeyClient(t *testing.T) {
 			}
 			if !errors.Is(err, s3.ErrResourceNotFound) {
 				t.Errorf("unexpected error %v", err)
+			}
+		})
+		t.Run("two keys with the same name", func(t *testing.T) {
+			name := "dup-" + fixture.RandAlpha(12)
+			for range 2 {
+				if _, err := sut.Create(t.Context(), name); err != nil {
+					t.Fatal(err)
+				}
+			}
+
+			_, err := sut.Lookup(t.Context(), name)
+
+			if err == nil {
+				t.Fatal("expected an error for two keys named " + name)
+			}
+			if !errors.Is(err, s3.ErrMultipleMatches) {
+				t.Errorf("expected ErrMultipleMatches, got %v", err)
+			}
+			if !strings.Contains(err.Error(), "2 matching keys") {
+				t.Errorf("expected the match count from Garage in the error, got %v", err)
 			}
 		})
 	})
