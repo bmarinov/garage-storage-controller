@@ -14,14 +14,15 @@ jobs:
           persist-credentials: false
 
       - name: Setup Go
-        uses: actions/setup-go@v6
+        uses: actions/setup-go@v7
         with:
-          go-version-file: go.mod
+          go-version: '1.27'
+          check-latest: true
 
       - name: Run linter
-        uses: golangci/golangci-lint-action@v8
+        uses: golangci/golangci-lint-action@v9
         with:
-          version: v2.12.2
+          version: v2.14.0
         continue-on-error: true
 
       - name: Run govulncheck
