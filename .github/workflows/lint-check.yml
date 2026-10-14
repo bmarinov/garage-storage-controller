@@ -26,6 +26,5 @@ jobs:
 
       - name: Run govulncheck
         run: |
-          # Pin to v1.3.0: v1.4.0 panics on Go 1.26.x (golang/go#80059)
-          go install golang.org/x/vuln/cmd/govulncheck@v1.3.0
+          go install golang.org/x/vuln/cmd/govulncheck@v1.9.0
           ./scripts/govulncheck.sh

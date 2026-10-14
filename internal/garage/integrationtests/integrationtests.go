@@ -37,6 +37,11 @@ const image = "docker.io/dxflrs/garage:v2.3.0"
 
 const adminPort string = "3903/tcp"
 
+const s3Port string = "3900/tcp"
+
+// S3Region matches s3_region in garage.toml. S3 requests must be signed for it.
+const S3Region = "garage"
+
 //go:embed garage.toml
 var garageConfig []byte
 
