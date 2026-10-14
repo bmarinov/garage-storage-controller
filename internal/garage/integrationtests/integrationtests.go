@@ -33,7 +33,7 @@ import (
 	"github.com/testcontainers/testcontainers-go/wait"
 )
 
-const image = "docker.io/dxflrs/garage:v2.3.0"
+const image = "docker.io/dxflrs/garage:v2.4.1"
 
 const adminPort string = "3903/tcp"
 
