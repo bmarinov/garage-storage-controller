@@ -15,11 +15,14 @@
 package garage
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
 	"reflect"
 	"strings"
 	"testing"
@@ -42,6 +45,20 @@ func TestMain(m *testing.M) {
 func TestHealthCheck(t *testing.T) {
 	t.Run("authenticated against a running Garage instance", func(t *testing.T) {
 		sut := NewClient(garageEnv.AdminAPIAddr, garageEnv.APIToken)
+		if err := sut.Health(t.Context()); err != nil {
+			t.Fatalf("expected healthy garage, got %v", err)
+		}
+	})
+
+	t.Run("token with only the README scopes", func(t *testing.T) {
+		sut := NewClient(garageEnv.AdminAPIAddr, mustCreateAdminToken(t, readmeScopes))
+		if err := sut.Health(t.Context()); err != nil {
+			t.Fatalf("expected healthy garage, got %v", err)
+		}
+	})
+
+	t.Run("token without scopes", func(t *testing.T) {
+		sut := NewClient(garageEnv.AdminAPIAddr, mustCreateAdminToken(t, []string{}))
 		if err := sut.Health(t.Context()); err != nil {
 			t.Fatalf("expected healthy garage, got %v", err)
 		}
@@ -630,4 +647,50 @@ func newORW(owner, read, write bool) s3.Permissions {
 		Read:  read,
 		Write: write,
 	}
+}
+
+// readmeScopes are the admin API permissions listed in the README.
+var readmeScopes = []string{
+	"CreateKey", "GetKeyInfo", "DeleteKey",
+	"CreateBucket", "GetBucketInfo", "UpdateBucket",
+	"AllowBucketKey", "DenyBucketKey",
+	"ListBuckets", "DeleteBucket",
+}
+
+// mustCreateAdminToken creates an admin token with the given scopes and returns the secret.
+func mustCreateAdminToken(t *testing.T, scope []string) string {
+	t.Helper()
+	payload, err := json.Marshal(map[string]any{
+		"name":         "test-" + fixture.RandAlpha(8),
+		"neverExpires": true,
+		"scope":        scope,
+	})
+	if err != nil {
+		t.Fatalf("marshal CreateAdminToken body: %v", err)
+	}
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodPost,
+		garageEnv.AdminAPIAddr+"/v2/CreateAdminToken", bytes.NewReader(payload))
+	if err != nil {
+		t.Fatalf("build CreateAdminToken request: %v", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+garageEnv.APIToken)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("CreateAdminToken: %v", err)
+	}
+	defer func() {
+		_ = resp.Body.Close()
+	}()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("CreateAdminToken: expected status %d, got %d", http.StatusOK, resp.StatusCode)
+	}
+	var created struct {
+		SecretToken string `json:"secretToken"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&created); err != nil {
+		t.Fatalf("decode CreateAdminToken response: %v", err)
+	}
+	return created.SecretToken
 }

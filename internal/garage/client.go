@@ -76,11 +76,13 @@ type ClusterClient struct {
 	*adminAPIHttpClient
 }
 
-// Health reports whether the admin API is reachable via GET against GetClusterHealth.
+// Health reports whether the admin API is reachable and accepts the token.
+// The API client does a GET against GetCurrentAdminTokenInfo. This endpoint
+// does not need an additional scope on the token.
 //
-// Returns nil when the response is 2xx.
+// Returns nil when the response is 200 OK.
 func (c *ClusterClient) Health(ctx context.Context) error {
-	const path = "/v2/GetClusterHealth"
+	const path = "/v2/GetCurrentAdminTokenInfo"
 	resp, err := c.doRequest(ctx, http.MethodGet, path, nil, nil)
 	if err != nil {
 		return fmt.Errorf("garage admin api health: %w", err)
